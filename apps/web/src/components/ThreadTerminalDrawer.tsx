@@ -315,6 +315,8 @@ function resolveTerminalFontFamily(style: ServerTerminalStyle | undefined): stri
 /**
  * App theme colors, overridden by the user's Ghostty theme when the server
  * found one. Ghostty light/dark variants follow the app's active mode.
+ * The background always stays the app surface color so the terminal reads
+ * as part of the T3 Code UI rather than a foreign window.
  */
 function resolveTerminalTheme(
   mountElement: HTMLElement | null | undefined,
@@ -326,7 +328,6 @@ function resolveTerminalTheme(
   if (!colors) return base;
 
   const theme: ITheme = { ...base };
-  if (colors.background) theme.background = colors.background;
   if (colors.foreground) theme.foreground = colors.foreground;
   if (colors.cursor) theme.cursor = colors.cursor;
   if (colors.selectionBackground) theme.selectionBackground = colors.selectionBackground;
