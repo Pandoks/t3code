@@ -1,5 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeFSP from "node:fs/promises";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
 import * as NodeUtil from "node:util";
 
@@ -141,7 +143,7 @@ describe("external native chat catalog", () => {
       expect(session?.candidate).toMatchObject({
         source: "claude",
         providerInstanceId: "claude_work",
-        nativeSessionId: "claude-session-beta",
+        nativeSessionId: "8dcd1b39-8e74-41f0-a07c-b876917a46c4",
         cwd: "/workspace/beta",
         projectPath: "/workspace/beta",
         title: "External chat import",
@@ -215,13 +217,47 @@ describe("external native chat catalog", () => {
       });
 
       expect(sessions.map((session) => session.candidate.nativeSessionId)).toEqual([
-        "claude-session-beta",
+        "8dcd1b39-8e74-41f0-a07c-b876917a46c4",
       ]);
       expect(sessions[0]?.events).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ type: "message", text: "Add import support" }),
         ]),
       );
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("marks Claude session IDs rejected by the runtime as not resumable", () =>
+    Effect.gen(function* () {
+      const homeRoot = yield* Effect.promise(() =>
+        NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "t3-claude-invalid-")),
+      );
+      const projectRoot = NodePath.join(homeRoot, "projects", "-workspace-invalid");
+      yield* Effect.promise(() => NodeFSP.mkdir(projectRoot, { recursive: true }));
+      yield* Effect.promise(() =>
+        NodeFSP.writeFile(
+          NodePath.join(projectRoot, "invalid.jsonl"),
+          `${JSON.stringify({
+            type: "user",
+            uuid: "user-1",
+            sessionId: "not-a-runtime-uuid",
+            timestamp: "2026-07-20T11:00:00.000Z",
+            cwd: "/workspace/invalid",
+            message: { role: "user", content: "Keep this history readable" },
+          })}\n`,
+        ),
+      );
+
+      const [session] = yield* scanClaudeExternalChats({
+        homeRoot,
+        providerInstanceId: ProviderInstanceId.make("claude_work"),
+      });
+
+      expect(session?.candidate.resumability).toEqual({
+        status: "not_resumable",
+        reason: "Native session ID is incompatible with the provider runtime.",
+      });
+      yield* Effect.promise(() => NodeFSP.rm(homeRoot, { recursive: true, force: true }));
     }).pipe(Effect.provide(NodeServices.layer)),
   );
 

@@ -440,6 +440,10 @@ interface CodexThreadOpenClient {
   ) => Effect.Effect<CodexRpc.ClientRequestResponsesByMethod[M], CodexErrors.CodexAppServerError>;
 }
 
+export function makeCodexResumeCursor(threadId: string, strictResume: boolean) {
+  return { threadId, ...(strictResume ? { strictResume: true as const } : {}) };
+}
+
 export const openCodexThread = (input: {
   readonly client: CodexThreadOpenClient;
   readonly threadId: ThreadId;
@@ -1220,12 +1224,13 @@ export const makeCodexSessionRuntime = (
       });
 
       const providerThreadId = opened.thread.id;
+      const strictResume = options.resumeCursor?.strictResume === true;
       const session = {
         ...(yield* Ref.get(sessionRef)),
         status: "ready",
         cwd: opened.cwd,
         model: opened.model,
-        resumeCursor: { threadId: providerThreadId },
+        resumeCursor: makeCodexResumeCursor(providerThreadId, strictResume),
         updatedAt: yield* nowIso,
       } satisfies ProviderSession;
       yield* Ref.set(sessionRef, session);
@@ -1309,11 +1314,14 @@ export const makeCodexSessionRuntime = (
             ...(normalizedModel ? { model: normalizedModel } : {}),
           });
           const resumedProviderThreadId = currentProviderThreadId(yield* Ref.get(sessionRef));
+          const strictResume = options.resumeCursor?.strictResume === true;
           return {
             threadId: options.threadId,
             turnId,
             ...(resumedProviderThreadId
-              ? { resumeCursor: { threadId: resumedProviderThreadId } }
+              ? {
+                  resumeCursor: makeCodexResumeCursor(resumedProviderThreadId, strictResume),
+                }
               : {}),
           } satisfies ProviderTurnStartResult;
         }),

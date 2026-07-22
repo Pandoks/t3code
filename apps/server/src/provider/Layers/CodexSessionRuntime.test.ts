@@ -18,6 +18,7 @@ import {
   buildTurnStartParams,
   hasConfiguredMcpServer,
   isRecoverableThreadResumeError,
+  makeCodexResumeCursor,
   openCodexThread,
 } from "./CodexSessionRuntime.ts";
 const isCodexAppServerRequestError = Schema.is(CodexErrors.CodexAppServerRequestError);
@@ -365,6 +366,16 @@ describe("isRecoverableThreadResumeError", () => {
 });
 
 describe("openCodexThread", () => {
+  it("preserves strict resume in every persisted cursor", () => {
+    NodeAssert.deepStrictEqual(makeCodexResumeCursor("native-thread", true), {
+      threadId: "native-thread",
+      strictResume: true,
+    });
+    NodeAssert.deepStrictEqual(makeCodexResumeCursor("ordinary-thread", false), {
+      threadId: "ordinary-thread",
+    });
+  });
+
   it.effect("does not fall back to thread/start for strict imported cursors", () =>
     Effect.gen(function* () {
       const calls: Array<"thread/start" | "thread/resume"> = [];

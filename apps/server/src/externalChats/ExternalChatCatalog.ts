@@ -860,7 +860,13 @@ const scanSource = Effect.fn("ExternalChatCatalog.scanSource")(function* (
     const updatedAt = sortedTimestamps.at(-1) ?? stat.mtime.toISOString();
     const firstUserMessage = firstMessage(parsed.events, "user");
     const firstVisibleMessage = firstMessage(parsed.events);
-    const resumable = parsed.hasNativeMetadata && parsed.cwd !== undefined;
+    const hasRuntimeCompatibleNativeId =
+      source === "codex" ||
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        parsed.nativeSessionId,
+      );
+    const resumable =
+      parsed.hasNativeMetadata && parsed.cwd !== undefined && hasRuntimeCompatibleNativeId;
     const candidate: ExternalChatCandidate = {
       source,
       candidateId: makeCandidateId(source, input.providerInstanceId, parsed.nativeSessionId),
@@ -878,9 +884,12 @@ const scanSource = Effect.fn("ExternalChatCatalog.scanSource")(function* (
       resumability: resumable
         ? { status: "resumable" }
         : {
-            status: parsed.hasNativeMetadata ? "unknown" : "not_resumable",
+            status:
+              parsed.hasNativeMetadata && parsed.cwd === undefined ? "unknown" : "not_resumable",
             reason: parsed.hasNativeMetadata
-              ? "Working directory unavailable."
+              ? parsed.cwd === undefined
+                ? "Working directory unavailable."
+                : "Native session ID is incompatible with the provider runtime."
               : "Native session metadata unavailable.",
           },
     };

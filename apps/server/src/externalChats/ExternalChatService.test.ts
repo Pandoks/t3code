@@ -281,7 +281,7 @@ it.layer(testLayer)("ExternalChatService", (it) => {
           (command) => String(command.type) === "thread.external-chat.import",
         ) as unknown as { readonly externalChat: { readonly resumeCursor: unknown } };
         expect(importCommand.externalChat.resumeCursor).toEqual({
-          resume: "claude-session-beta",
+          resume: "8dcd1b39-8e74-41f0-a07c-b876917a46c4",
           resumeSessionAt: "assistant-3",
         });
 
