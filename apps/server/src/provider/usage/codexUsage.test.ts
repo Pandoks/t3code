@@ -27,8 +27,8 @@ describe("Codex account usage", () => {
     expect(
       result.windows.map((window) => [window.id, window.label, window.remainingPercent]),
     ).toEqual([
+      ["secondary", "Weekly", 38],
       ["primary", "5 hours", 82],
-      ["secondary", "1 week", 38],
     ]);
     expect(result.history).toEqual({
       todayTokens: 600,
@@ -86,9 +86,9 @@ describe("Codex account usage", () => {
     });
 
     expect(result.windows.map(({ id, label }) => ({ id, label }))).toEqual([
+      { id: "codex:secondary", label: "Weekly" },
+      { id: "review:primary", label: "Code review" },
       { id: "codex:primary", label: "Codex · 5 hours" },
-      { id: "codex:secondary", label: "Codex · 1 week" },
-      { id: "review:primary", label: "Code review · 1 day" },
     ]);
     expect(result.headlineWindowId).toBe("codex:primary");
   });
@@ -111,6 +111,6 @@ describe("Codex account usage", () => {
       today: "2025-12-17",
     });
 
-    expect(result.windows.map((window) => window.id)).toEqual(["codex:primary", "review:primary"]);
+    expect(result.windows.map((window) => window.id)).toEqual(["review:primary", "codex:primary"]);
   });
 });

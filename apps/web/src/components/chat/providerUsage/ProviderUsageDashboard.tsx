@@ -16,6 +16,7 @@ import {
   formatProviderUsageReset,
   formatProviderUsageTokens,
   PROVIDER_USAGE_COLORS,
+  orderProviderUsageWindows,
   providerUsageBarHeight,
 } from "./providerUsagePresentation";
 
@@ -54,6 +55,8 @@ export function ProviderUsageDashboard(props: {
     selected.windows[0] ??
     null;
   const color = providerColor(selected.driver);
+  const isCodex = selected.driver === "codex";
+  const windows = orderProviderUsageWindows(selected.driver, selected.windows);
   const hasProviderTabs = props.snapshots.length > 1;
   const selectedTabId = `${tabGroupId}-tab-${selected.instanceId}`;
   const panelId = `${tabGroupId}-panel`;
@@ -140,25 +143,29 @@ export function ProviderUsageDashboard(props: {
           </Button>
         </header>
 
-        <section className="mt-4 flex items-end justify-between gap-4 border-b pb-4">
-          <div>
-            <div className="font-semibold text-2xl tabular-nums tracking-tight">
-              {formatProviderUsagePercent(headline?.remainingPercent)}
-              {headline ? (
-                <span className="ml-1.5 font-medium text-muted-foreground text-xs">remaining</span>
-              ) : null}
+        {!isCodex ? (
+          <section className="mt-4 flex items-end justify-between gap-4 border-b pb-4">
+            <div>
+              <div className="font-semibold text-2xl tabular-nums tracking-tight">
+                {formatProviderUsagePercent(headline?.remainingPercent)}
+                {headline ? (
+                  <span className="ml-1.5 font-medium text-muted-foreground text-xs">
+                    remaining
+                  </span>
+                ) : null}
+              </div>
+              <div className="mt-1 text-muted-foreground text-xs">
+                {headline?.label ?? "Current window"}
+              </div>
             </div>
-            <div className="mt-1 text-muted-foreground text-xs">
-              {headline?.label ?? "Current window"}
+            <div className="text-right text-[11px] text-muted-foreground">
+              {headline ? formatProviderUsageReset(headline.resetsAt, now) : "—"}
             </div>
-          </div>
-          <div className="text-right text-[11px] text-muted-foreground">
-            {headline ? formatProviderUsageReset(headline.resetsAt, now) : "—"}
-          </div>
-        </section>
+          </section>
+        ) : null}
 
         <section className="mt-4 space-y-3" aria-label="Quota windows">
-          {selected.windows.map((window) => {
+          {windows.map((window) => {
             const remaining = Math.max(0, Math.min(100, window.remainingPercent));
             return (
               <div key={window.id}>
@@ -190,7 +197,7 @@ export function ProviderUsageDashboard(props: {
               </div>
             );
           })}
-          {selected.windows.length === 0 ? (
+          {windows.length === 0 ? (
             <div className="rounded-lg bg-muted/40 px-3 py-2.5 text-muted-foreground text-xs">
               {selected.message ?? "Quota details are unavailable."}
             </div>
@@ -198,40 +205,73 @@ export function ProviderUsageDashboard(props: {
         </section>
 
         <section className="mt-4 border-t pt-4" aria-label="Usage history">
-          <div className="grid grid-cols-2 gap-3">
-            <HistoryStat
-              label="Today"
-              tokens={selected.history?.todayTokens}
-              cost={selected.history?.todayEstimatedCostUsd}
-            />
-            <HistoryStat
-              label="30 days"
-              tokens={selected.history?.thirtyDayTokens}
-              cost={selected.history?.thirtyDayEstimatedCostUsd}
-            />
-          </div>
+          {isCodex ? (
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+              <Metric
+                label="Today"
+                value={formatProviderUsageCost(selected.history?.todayEstimatedCostUsd)}
+              />
+              <Metric
+                label="30d"
+                value={formatProviderUsageCost(selected.history?.thirtyDayEstimatedCostUsd)}
+              />
+              <Metric
+                label="Latest tokens"
+                value={formatProviderUsageTokens(selected.history?.todayTokens)}
+              />
+              <Metric
+                label="30d tokens"
+                value={formatProviderUsageTokens(selected.history?.thirtyDayTokens)}
+              />
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              <HistoryStat
+                label="Today"
+                tokens={selected.history?.todayTokens}
+                cost={selected.history?.todayEstimatedCostUsd}
+              />
+              <HistoryStat
+                label="30 days"
+                tokens={selected.history?.thirtyDayTokens}
+                cost={selected.history?.thirtyDayEstimatedCostUsd}
+              />
+            </div>
+          )}
+          {selected.history?.daily.length ? (
+            <>
+              {isCodex ? (
+                <div className="mt-3 text-right font-medium text-[10px] text-muted-foreground tabular-nums">
+                  {formatProviderUsageCost(selected.history.thirtyDayEstimatedCostUsd)}
+                </div>
+              ) : null}
+              <div
+                className="mt-1 flex h-14 items-end gap-px"
+                role="img"
+                aria-label="Token usage over the last 30 days"
+              >
+                {selected.history.daily.map((day) => (
+                  <span
+                    key={day.date}
+                    className="min-w-0 flex-1 rounded-t-[2px] opacity-80"
+                    title={`${day.date}: ${formatProviderUsageTokens(day.totalTokens)} tokens`}
+                    style={{
+                      height: `${providerUsageBarHeight(day.totalTokens, maximumDailyTokens)}%`,
+                      backgroundColor: color,
+                    }}
+                  />
+                ))}
+              </div>
+            </>
+          ) : null}
           <div className="mt-3 flex items-center justify-between gap-3 text-xs">
             <span className="text-muted-foreground">Top model</span>
             <span className="truncate font-medium">{selected.history?.topModel ?? "—"}</span>
           </div>
-          {selected.history?.daily.length ? (
-            <div
-              className="mt-4 flex h-14 items-end gap-px"
-              role="img"
-              aria-label="Token usage over the last 30 days"
-            >
-              {selected.history.daily.map((day) => (
-                <span
-                  key={day.date}
-                  className="min-w-0 flex-1 rounded-t-[2px] opacity-80"
-                  title={`${day.date}: ${formatProviderUsageTokens(day.totalTokens)} tokens`}
-                  style={{
-                    height: `${providerUsageBarHeight(day.totalTokens, maximumDailyTokens)}%`,
-                    backgroundColor: color,
-                  }}
-                />
-              ))}
-            </div>
+          {isCodex ? (
+            <p className="mt-2 text-[10px] text-muted-foreground">
+              Estimated from token usage · not a subscription bill
+            </p>
           ) : null}
         </section>
 
@@ -239,6 +279,15 @@ export function ProviderUsageDashboard(props: {
           <p className="mt-3 text-pretty text-[11px] text-muted-foreground">{selected.message}</p>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+function Metric(props: { readonly label: string; readonly value: string }) {
+  return (
+    <div>
+      <div className="text-[10px] text-muted-foreground">{props.label}</div>
+      <div className="font-semibold text-sm tabular-nums">{props.value}</div>
     </div>
   );
 }

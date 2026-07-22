@@ -76,7 +76,7 @@ export function makeCodexUsageSource(input: {
       );
       return parseCodexUsageResponses({
         rateLimits,
-        usage,
+        ...(usage ? { usage } : {}),
         today: DateTime.formatIso(yield* DateTime.now).slice(0, 10),
       });
     }),

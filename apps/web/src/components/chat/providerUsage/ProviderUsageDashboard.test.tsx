@@ -101,6 +101,58 @@ describe("ProviderUsageDashboard", () => {
     expect(markup).toContain(`role="tabpanel" id="${panelId}" aria-labelledby="${tabId}"`);
   });
 
+  it("orders and labels Codex quotas like CodexBar and places costs before token totals", () => {
+    const markup = renderToStaticMarkup(
+      <ProviderUsageDashboard
+        snapshots={[
+          snapshot({
+            headlineWindowId: "codex:secondary",
+            windows: [
+              {
+                id: "review:primary",
+                label: "Code review",
+                usedPercent: 49,
+                remainingPercent: 51,
+                resetsAt: "2026-07-25T00:00:00.000Z",
+                windowDurationMinutes: 10_080,
+              },
+              {
+                id: "spark:primary",
+                label: "Codex Spark Weekly",
+                usedPercent: 0,
+                remainingPercent: 100,
+                resetsAt: "2026-07-29T00:00:00.000Z",
+                windowDurationMinutes: 10_080,
+              },
+              {
+                id: "codex:secondary",
+                label: "Weekly",
+                usedPercent: 51,
+                remainingPercent: 49,
+                resetsAt: "2026-07-27T00:00:00.000Z",
+                windowDurationMinutes: 10_080,
+              },
+            ],
+          }),
+        ]}
+        selectedInstanceId={ProviderInstanceId.make("codex-default")}
+        now={new Date("2026-07-22T12:05:00.000Z")}
+        onSelectInstance={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    expect(markup.indexOf("Weekly")).toBeLessThan(markup.indexOf("Codex Spark Weekly"));
+    expect(markup.indexOf("Codex Spark Weekly")).toBeLessThan(markup.indexOf("Code review"));
+    expect(markup.indexOf("$1.42")).toBeLessThan(markup.indexOf("12.8K"));
+    expect(markup).toContain("Latest tokens");
+    expect(markup).toContain("30d tokens");
+    expect(markup.indexOf("Token usage over the last 30 days")).toBeLessThan(
+      markup.indexOf("Top model"),
+    );
+    expect(markup).toContain("Estimated from token usage · not a subscription bill");
+  });
+
   it("uses Claude's native accent for Claude Agent instances", () => {
     const markup = renderToStaticMarkup(
       <ProviderUsageDashboard

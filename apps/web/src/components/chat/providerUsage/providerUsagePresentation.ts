@@ -3,6 +3,14 @@ export const PROVIDER_USAGE_COLORS = {
   claude: "#D97757",
 } as const;
 
+export function orderProviderUsageWindows(
+  driver: ProviderDriverKind,
+  windows: ReadonlyArray<ProviderUsageWindow>,
+): ReadonlyArray<ProviderUsageWindow> {
+  if (driver !== "codex") return windows;
+  return [...windows].sort((left, right) => codexWindowRank(left) - codexWindowRank(right));
+}
+
 export function formatProviderUsagePercent(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return "—";
   return `${Math.round(value)}%`;
@@ -61,3 +69,12 @@ export function formatProviderUsageReset(timestamp: string | null | undefined, n
 function trimDecimal(value: number): string {
   return value.toFixed(1).replace(/\.0$/u, "");
 }
+
+function codexWindowRank(window: ProviderUsageWindow): number {
+  const identity = `${window.id} ${window.label}`.toLowerCase();
+  if (window.label === "Weekly") return 0;
+  if (identity.includes("spark")) return 1;
+  if (identity.includes("review")) return 2;
+  return 3;
+}
+import type { ProviderDriverKind, ProviderUsageWindow } from "@t3tools/contracts";

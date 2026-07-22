@@ -10,6 +10,7 @@ import { Popover, PopoverPopup, PopoverTrigger } from "../../ui/popover";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import { ProviderUsageDashboard } from "./ProviderUsageDashboard";
 import { ProviderUsageTrigger } from "./ProviderUsageTrigger";
+import { orderProviderUsageWindows } from "./providerUsagePresentation";
 import {
   filterSupportedProviderUsageSnapshots,
   isProviderUsageDriver,
@@ -63,6 +64,9 @@ function SupportedProviderUsagePopover(props: ProviderUsagePopoverProps) {
   const selectedSnapshot = snapshots.find(
     (snapshot) => snapshot.instanceId === effectiveSelectedInstanceId,
   );
+  const activeSnapshot = snapshots.find(
+    (snapshot) => snapshot.instanceId === props.activeInstanceId,
+  );
 
   useEffect(() => {
     if (previousActiveInstanceIdRef.current === props.activeInstanceId) return;
@@ -104,6 +108,16 @@ function SupportedProviderUsagePopover(props: ProviderUsagePopoverProps) {
                 <ProviderUsageTrigger
                   providerDisplayName={props.activeProviderDisplayName}
                   expanded={open}
+                  {...(activeSnapshot
+                    ? {
+                        remainingLevels: orderProviderUsageWindows(
+                          activeSnapshot.driver,
+                          activeSnapshot.windows,
+                        )
+                          .slice(0, 2)
+                          .map((window) => window.remainingPercent),
+                      }
+                    : {})}
                 />
               }
             />
