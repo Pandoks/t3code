@@ -1,5 +1,7 @@
 import { EditorId, type EnvironmentId, type ResolvedKeybindingsConfig } from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
 import { memo, useCallback, useEffect, useMemo } from "react";
+import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { isOpenFavoriteEditorShortcut, shortcutLabelForCommand } from "../../keybindings";
 import { usePreferredEditor } from "../../editorPreferences";
 import { ChevronDownIcon, FolderClosedIcon } from "lucide-react";
@@ -184,6 +186,10 @@ function getOpenInIconClass(kind: OpenInOption["kind"]) {
   return cn(kind === "brand" ? "text-foreground opacity-100" : "text-muted-foreground");
 }
 
+// Fork default: the Open button and the open-favorite shortcut launch the
+// in-app Neovim terminal until the user picks an external editor instead.
+const NEOVIM_PREFERRED_KEY = "t3code:open-in-neovim-preferred";
+
 export const OpenInPicker = memo(function OpenInPicker({
   environmentId,
   keybindings,
@@ -204,6 +210,12 @@ export const OpenInPicker = memo(function OpenInPicker({
 }) {
   const openInEditorMutation = useAtomCommand(shellEnvironment.openInEditor, "open in editor");
   const [preferredEditor, setPreferredEditor] = usePreferredEditor(availableEditors);
+  const [neovimPreferredStored, setNeovimPreferred] = useLocalStorage(
+    NEOVIM_PREFERRED_KEY,
+    true,
+    Schema.Boolean,
+  );
+  const neovimPreferred = Boolean(onOpenInNeovim) && neovimPreferredStored;
   const options = useMemo(
     () => resolveOptions(navigator.platform, availableEditors),
     [availableEditors],
@@ -223,10 +235,24 @@ export const OpenInPicker = memo(function OpenInPicker({
         },
       });
       setPreferredEditor(editor);
+      setNeovimPreferred(false);
       return result;
     },
-    [environmentId, openInCwd, openInEditorMutation, preferredEditor, setPreferredEditor],
+    [
+      environmentId,
+      openInCwd,
+      openInEditorMutation,
+      preferredEditor,
+      setNeovimPreferred,
+      setPreferredEditor,
+    ],
   );
+
+  const openNeovim = useCallback(() => {
+    if (!onOpenInNeovim || !openInCwd) return;
+    setNeovimPreferred(true);
+    onOpenInNeovim();
+  }, [onOpenInNeovim, openInCwd, setNeovimPreferred]);
 
   const openFavoriteEditorShortcutLabel = useMemo(
     () => shortcutLabelForCommand(keybindings, "editor.openFavorite"),
@@ -238,6 +264,11 @@ export const OpenInPicker = memo(function OpenInPicker({
     const handler = (e: globalThis.KeyboardEvent) => {
       if (!isOpenFavoriteEditorShortcut(e, keybindings)) return;
       if (!openInCwd) return;
+      if (neovimPreferred) {
+        e.preventDefault();
+        openNeovim();
+        return;
+      }
       if (!preferredEditor) return;
 
       e.preventDefault();
@@ -255,8 +286,10 @@ export const OpenInPicker = memo(function OpenInPicker({
     enableShortcut,
     environmentId,
     keybindings,
+    neovimPreferred,
     openInCwd,
     openInEditorMutation,
+    openNeovim,
     preferredEditor,
   ]);
 
@@ -266,14 +299,18 @@ export const OpenInPicker = memo(function OpenInPicker({
         aria-label={compact ? "Open file in preferred editor" : undefined}
         size="xs"
         variant="outline"
-        disabled={!preferredEditor || !openInCwd}
-        onClick={() => openInEditor(preferredEditor)}
+        disabled={neovimPreferred ? !openInCwd : !preferredEditor || !openInCwd}
+        onClick={() => (neovimPreferred ? openNeovim() : openInEditor(preferredEditor))}
       >
-        {primaryOption?.Icon && (
-          <primaryOption.Icon
-            aria-hidden="true"
-            className={cn("size-3.5", getOpenInIconClass(primaryOption.kind))}
-          />
+        {neovimPreferred ? (
+          <NeovimIcon aria-hidden="true" className={cn("size-3.5", getOpenInIconClass("brand"))} />
+        ) : (
+          primaryOption?.Icon && (
+            <primaryOption.Icon
+              aria-hidden="true"
+              className={cn("size-3.5", getOpenInIconClass(primaryOption.kind))}
+            />
+          )
         )}
         <span
           className={
@@ -303,16 +340,19 @@ export const OpenInPicker = memo(function OpenInPicker({
             <MenuItem disabled>No installed editors found</MenuItem>
           )}
           {onOpenInNeovim && (
-            <MenuItem disabled={!openInCwd} onClick={() => onOpenInNeovim()}>
+            <MenuItem disabled={!openInCwd} onClick={openNeovim}>
               <NeovimIcon aria-hidden="true" className={getOpenInIconClass("brand")} />
               Neovim
+              {neovimPreferred && openFavoriteEditorShortcutLabel && (
+                <MenuShortcut>{openFavoriteEditorShortcutLabel}</MenuShortcut>
+              )}
             </MenuItem>
           )}
           {options.map(({ label, Icon, value, kind }) => (
             <MenuItem key={value} onClick={() => openInEditor(value)}>
               <Icon aria-hidden="true" className={getOpenInIconClass(kind)} />
               {label}
-              {value === preferredEditor && openFavoriteEditorShortcutLabel && (
+              {!neovimPreferred && value === preferredEditor && openFavoriteEditorShortcutLabel && (
                 <MenuShortcut>{openFavoriteEditorShortcutLabel}</MenuShortcut>
               )}
             </MenuItem>
