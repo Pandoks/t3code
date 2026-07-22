@@ -60,6 +60,19 @@ import {
 } from "./orchestration.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
 import {
+  ApplyProviderConfigurationInput,
+  ApplyProviderConfigurationResult,
+  InitializeProviderSkillInput,
+  InitializeProviderSkillResult,
+  ProviderConfigurationError,
+  ProviderConfigurationSnapshot,
+  ProviderConfigurationSnapshotInput,
+  ProviderConfigurationValidationResult,
+  ProviderSkillActionInput,
+  ProviderSkillActionResult,
+  ValidateProviderConfigurationInput,
+} from "./providerConfiguration.ts";
+import {
   RelayClientInstallFailedError,
   RelayClientInstallProgressEventSchema,
   RelayClientStatusSchema,
@@ -215,6 +228,13 @@ export const WS_METHODS = {
   serverGetProcessResourceHistory: "server.getProcessResourceHistory",
   serverSignalProcess: "server.signalProcess",
 
+  // Provider-owned configuration
+  providerConfigurationGetSnapshot: "providerConfiguration.getSnapshot",
+  providerConfigurationValidateDraft: "providerConfiguration.validateDraft",
+  providerConfigurationApplyDraft: "providerConfiguration.applyDraft",
+  providerConfigurationRunSkillAction: "providerConfiguration.runSkillAction",
+  providerConfigurationInitializeSkill: "providerConfiguration.initializeSkill",
+
   // Cloud environment methods
   cloudGetRelayClientStatus: "cloud.getRelayClientStatus",
   cloudInstallRelayClient: "cloud.installRelayClient",
@@ -290,6 +310,51 @@ export const WsServerUpdateSettingsRpc = Rpc.make(WS_METHODS.serverUpdateSetting
   success: ServerSettings,
   error: Schema.Union([ServerSettingsError, EnvironmentAuthorizationError]),
 });
+
+export const WsProviderConfigurationGetSnapshotRpc = Rpc.make(
+  WS_METHODS.providerConfigurationGetSnapshot,
+  {
+    payload: ProviderConfigurationSnapshotInput,
+    success: ProviderConfigurationSnapshot,
+    error: Schema.Union([ProviderConfigurationError, EnvironmentAuthorizationError]),
+  },
+);
+
+export const WsProviderConfigurationValidateDraftRpc = Rpc.make(
+  WS_METHODS.providerConfigurationValidateDraft,
+  {
+    payload: ValidateProviderConfigurationInput,
+    success: ProviderConfigurationValidationResult,
+    error: Schema.Union([ProviderConfigurationError, EnvironmentAuthorizationError]),
+  },
+);
+
+export const WsProviderConfigurationApplyDraftRpc = Rpc.make(
+  WS_METHODS.providerConfigurationApplyDraft,
+  {
+    payload: ApplyProviderConfigurationInput,
+    success: ApplyProviderConfigurationResult,
+    error: Schema.Union([ProviderConfigurationError, EnvironmentAuthorizationError]),
+  },
+);
+
+export const WsProviderConfigurationRunSkillActionRpc = Rpc.make(
+  WS_METHODS.providerConfigurationRunSkillAction,
+  {
+    payload: ProviderSkillActionInput,
+    success: ProviderSkillActionResult,
+    error: Schema.Union([ProviderConfigurationError, EnvironmentAuthorizationError]),
+  },
+);
+
+export const WsProviderConfigurationInitializeSkillRpc = Rpc.make(
+  WS_METHODS.providerConfigurationInitializeSkill,
+  {
+    payload: InitializeProviderSkillInput,
+    success: InitializeProviderSkillResult,
+    error: Schema.Union([ProviderConfigurationError, EnvironmentAuthorizationError]),
+  },
+);
 
 export const WsServerDiscoverSourceControlRpc = Rpc.make(WS_METHODS.serverDiscoverSourceControl, {
   payload: Schema.Struct({}),
@@ -697,6 +762,11 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerRemoveKeybindingRpc,
   WsServerGetSettingsRpc,
   WsServerUpdateSettingsRpc,
+  WsProviderConfigurationGetSnapshotRpc,
+  WsProviderConfigurationValidateDraftRpc,
+  WsProviderConfigurationApplyDraftRpc,
+  WsProviderConfigurationRunSkillActionRpc,
+  WsProviderConfigurationInitializeSkillRpc,
   WsServerDiscoverSourceControlRpc,
   WsServerGetTraceDiagnosticsRpc,
   WsServerGetProcessDiagnosticsRpc,

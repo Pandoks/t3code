@@ -17,6 +17,7 @@ import {
   MessageSquareIcon,
   PlusIcon,
   SearchIcon,
+  SparklesIcon,
   SquarePenIcon,
   Undo2Icon,
 } from "lucide-react";
@@ -58,6 +59,7 @@ import { useThreadSelectionStore } from "../threadSelectionStore";
 import { useThreadActions } from "../hooks/useThreadActions";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { openCommandPalette } from "../commandPaletteBus";
+import { openNewSkillDialog } from "../newSkillDialogBus";
 import { startNewThreadFromContext } from "../lib/chatThreadActions";
 import { useClientSettings } from "../hooks/useSettings";
 import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
@@ -1443,6 +1445,21 @@ export default function SidebarV2() {
                 })}
               </div>
               <div className="pointer-events-none absolute inset-y-0 right-0 flex w-12 items-center justify-end bg-gradient-to-r from-transparent via-card/90 to-card">
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <button
+                        type="button"
+                        aria-label="New Skill"
+                        onClick={openNewSkillDialog}
+                        className="pointer-events-auto flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground"
+                      />
+                    }
+                  >
+                    <SparklesIcon className="size-3.5" />
+                  </TooltipTrigger>
+                  <TooltipPopup side="bottom">New Skill</TooltipPopup>
+                </Tooltip>
                 <Tooltip>
                   <TooltipTrigger
                     render={

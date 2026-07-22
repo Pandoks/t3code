@@ -28,6 +28,7 @@ import {
   LinkIcon,
   MessageSquareIcon,
   SettingsIcon,
+  SparklesIcon,
   SquarePenIcon,
 } from "lucide-react";
 import {
@@ -78,6 +79,8 @@ import {
   resolveProjectPathForDispatch,
 } from "../lib/projectPaths";
 import { onOpenCommandPalette } from "../commandPaletteBus";
+import { openNewSkillDialog } from "../newSkillDialogBus";
+import { onOpenProjectDirectory } from "../openProjectDirectoryBus";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { getLatestThreadForProject } from "../lib/threadSort";
 import { cn, isMacPlatform, isWindowsPlatform, newProjectId } from "../lib/utils";
@@ -1077,6 +1080,18 @@ function OpenCommandPaletteDialog(props: {
     },
   });
 
+  actionItems.push({
+    kind: "action",
+    value: "action:new-skill",
+    searchTerms: ["new skill", "create skill", "agent skill", "codex", "claude"],
+    title: "New Skill",
+    icon: <SparklesIcon className={ITEM_ICON_CLASS} />,
+    run: async () => {
+      setOpen(false);
+      openNewSkillDialog();
+    },
+  });
+
   if (wslAddProjectEnvironmentOption) {
     actionItems.push({
       kind: "action",
@@ -1273,6 +1288,24 @@ function OpenCommandPaletteDialog(props: {
       currentProjectCwdForBrowse,
       handleAddProjectForEnvironment,
     ],
+  );
+
+  useEffect(
+    () =>
+      onOpenProjectDirectory((detail) => {
+        const targetEnvironment = environments.find(
+          (item) => item.environmentId === detail.environmentId,
+        );
+        void handleAddProjectForEnvironment({
+          environmentId: detail.environmentId,
+          rawCwd: detail.directory,
+          platform: getEnvironmentBrowsePlatform(
+            targetEnvironment?.serverConfig?.environment.platform.os,
+          ),
+          currentProjectCwd: null,
+        });
+      }),
+    [environments, handleAddProjectForEnvironment],
   );
 
   function getDefaultCloneParentPath(environmentId: EnvironmentId): string {
