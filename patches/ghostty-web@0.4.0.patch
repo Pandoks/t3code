@@ -1,0 +1,25 @@
+diff --git a/dist/ghostty-web.js b/dist/ghostty-web.js
+index a4ca427b95288e70c782ce303013cd644893dcec..08fcd8d362051efee614c657f76818eb21a4e4cb 100644
+--- a/dist/ghostty-web.js
++++ b/dist/ghostty-web.js
+@@ -1561,9 +1561,18 @@ class $ {
+   renderCursor(A, B) {
+     const g = A * this.metrics.width, E = B * this.metrics.height;
+     switch (this.ctx.fillStyle = this.theme.cursor, this.cursorStyle) {
+-      case "block":
+-        this.ctx.fillRect(g, E, this.metrics.width, this.metrics.height);
++      case "block": {
++        const M = this.currentBuffer, a = M == null ? void 0 : M.getLine == null ? void 0 : M.getLine(B), h = a == null ? void 0 : a[A];
++        const w = Math.max(1, (h == null ? void 0 : h.width) || 1);
++        this.ctx.fillRect(g, E, this.metrics.width * w, this.metrics.height);
++        if (h && h.width !== 0 && (h.codepoint || h.grapheme_len > 0)) {
++          const s = h.grapheme_len > 0 && M != null && M.getGraphemeString ? M.getGraphemeString(B, A) : String.fromCodePoint(h.codepoint || 32);
++          this.ctx.font = `${this.fontSize}px ${this.fontFamily}`;
++          this.ctx.fillStyle = this.theme.background;
++          this.ctx.fillText(s, g, E + this.metrics.baseline);
++        }
+         break;
++      }
+       case "underline":
+         const C = Math.max(2, Math.floor(this.metrics.height * 0.15));
+         this.ctx.fillRect(
