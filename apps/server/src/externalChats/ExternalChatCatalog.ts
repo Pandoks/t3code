@@ -70,6 +70,7 @@ interface ParsedTranscript {
   readonly nativeSessionId: string;
   readonly cwd?: string;
   readonly title?: string;
+  readonly parentThreadId?: string;
   readonly events: ReadonlyArray<NormalizedHistoricalEvent>;
   readonly diagnostics: ReadonlyArray<ExternalChatDiagnostic>;
   readonly timestamps: ReadonlyArray<string>;
@@ -303,6 +304,7 @@ const parseCodexTranscript = (contents: string, sourceFile: string): ParsedTrans
   let nativeSessionId = NodePath.basename(sourceFile, ".jsonl");
   let cwd: string | undefined;
   let title: string | undefined;
+  let parentThreadId: string | undefined;
   let hasNativeMetadata = false;
 
   for (const line of parsed.lines) {
@@ -325,6 +327,10 @@ const parseCodexTranscript = (contents: string, sourceFile: string): ParsedTrans
       hasNativeMetadata = true;
       nativeSessionId = asString(payload.id) ?? asString(payload.session_id) ?? nativeSessionId;
       cwd = asString(payload.cwd) ?? cwd;
+      parentThreadId =
+        asString(
+          asRecord(asRecord(asRecord(payload.source)?.subagent)?.thread_spawn)?.parent_thread_id,
+        ) ?? parentThreadId;
       const metadataTimestamp = asString(payload.timestamp);
       if (metadataTimestamp) timestamps.push(metadataTimestamp);
       continue;
@@ -562,6 +568,7 @@ const parseCodexTranscript = (contents: string, sourceFile: string): ParsedTrans
     nativeSessionId,
     ...(cwd ? { cwd } : {}),
     ...(title ? { title } : {}),
+    ...(parentThreadId ? { parentThreadId } : {}),
     events: sortEvents(events),
     diagnostics,
     timestamps,
@@ -787,13 +794,18 @@ const parseClaudeTranscript = (contents: string, sourceFile: string): ParsedTran
   };
 };
 
+const isInjectedMessageWrapper = (text: string) =>
+  /^<recommended_plugins>[\s\S]*<\/recommended_plugins>$/u.test(text.trim());
+
 const firstMessage = (
   events: ReadonlyArray<NormalizedHistoricalEvent>,
   role?: "user" | "assistant",
 ) =>
   events.find(
     (event): event is Extract<NormalizedHistoricalEvent, { readonly type: "message" }> =>
-      event.type === "message" && (!role || event.role === role),
+      event.type === "message" &&
+      !isInjectedMessageWrapper(event.text) &&
+      (!role || event.role === role),
   )?.text;
 
 const titleFromMessage = (message: string | undefined) => {
@@ -854,7 +866,12 @@ const scanSource = Effect.fn("ExternalChatCatalog.scanSource")(function* (
       source === "codex"
         ? parseCodexTranscript(contents, sourceFile)
         : parseClaudeTranscript(contents, sourceFile);
-    if (source === "claude" && parsed.isSidechain) continue;
+    if (
+      (source === "claude" && parsed.isSidechain) ||
+      (source === "codex" && parsed.parentThreadId)
+    ) {
+      continue;
+    }
     const sortedTimestamps = [...parsed.timestamps].sort();
     const createdAt = sortedTimestamps[0] ?? stat.birthtime.toISOString();
     const updatedAt = sortedTimestamps.at(-1) ?? stat.mtime.toISOString();

@@ -133,6 +133,26 @@ describe("external native chat catalog", () => {
     }).pipe(Effect.provide(NodeServices.layer)),
   );
 
+  it.effect("uses genuine prompts and excludes parented Codex subagent transcripts", () =>
+    Effect.gen(function* () {
+      const sessions = yield* scanCodexExternalChats({
+        homeRoot: codexHomeRoot,
+        providerInstanceId: ProviderInstanceId.make("codex_work"),
+      });
+
+      const injected = sessions.find(
+        (session) => session.candidate.nativeSessionId === "codex-session-injected",
+      );
+      expect(injected?.candidate).toMatchObject({
+        title: "Draft an importing plan",
+        preview: "Draft an importing plan",
+      });
+      expect(sessions.map((session) => session.candidate.nativeSessionId)).not.toContain(
+        "codex-session-parented",
+      );
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+
   it.effect("discovers Claude messages, tools, commands, file changes, plans, and errors", () =>
     Effect.gen(function* () {
       const [session] = yield* scanClaudeExternalChats({
@@ -301,7 +321,11 @@ describe("external native chat catalog", () => {
           NodeFSP.readFile(fixturesRoot + "/codex/sessions/2026/07/20/rollout-alpha.jsonl", "utf8"),
         );
 
-        expect(sessions.map((session) => session.candidate.source)).toEqual(["claude", "codex"]);
+        expect(sessions.map((session) => session.candidate.source)).toEqual([
+          "claude",
+          "codex",
+          "codex",
+        ]);
         expect(after).toBe(before);
       }).pipe(Effect.provide(NodeServices.layer)),
   );
