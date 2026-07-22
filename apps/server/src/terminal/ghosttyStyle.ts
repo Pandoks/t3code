@@ -34,7 +34,13 @@ function stripQuotes(value: string): string {
   return value;
 }
 
-function applyColorEntry(colors: MutableThemeColors, key: string, value: string): void {
+// Ghostty accepts hex colors with or without the leading #; CSS does not.
+function normalizeColorValue(value: string): string {
+  return /^[0-9a-fA-F]{6}$/.test(value) ? `#${value}` : value;
+}
+
+function applyColorEntry(colors: MutableThemeColors, key: string, rawValue: string): void {
+  const value = normalizeColorValue(rawValue);
   switch (key) {
     case "background":
       if (value.length === 0) delete colors.background;
@@ -61,7 +67,7 @@ function applyColorEntry(colors: MutableThemeColors, key: string, value: string)
       if (!match) return;
       const index = Number(match[1]);
       if (!Number.isInteger(index) || index < 0 || index >= PALETTE_SIZE) return;
-      colors.palette[index] = match[2] ?? "";
+      colors.palette[index] = normalizeColorValue(match[2] ?? "");
       return;
     }
     default:

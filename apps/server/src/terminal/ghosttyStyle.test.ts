@@ -42,6 +42,32 @@ describe("parseGhosttyConfig", () => {
   });
 });
 
+describe("parseGhosttyConfig bare hex colors", () => {
+  it("normalizes hex colors written without a leading #", () => {
+    const config = parseGhosttyConfig(`
+      background = 020004
+      foreground = EDF1F7
+      cursor-color = c0ffee
+      palette = 1=ff00ff
+    `);
+
+    expect(config.colors.background).toBe("#020004");
+    expect(config.colors.foreground).toBe("#EDF1F7");
+    expect(config.colors.cursor).toBe("#c0ffee");
+    expect(config.colors.palette[1]).toBe("#ff00ff");
+  });
+
+  it("keeps named colors and #-prefixed values unchanged", () => {
+    const config = parseGhosttyConfig(`
+      background = #000000
+      foreground = white
+    `);
+
+    expect(config.colors.background).toBe("#000000");
+    expect(config.colors.foreground).toBe("white");
+  });
+});
+
 describe("splitThemeSelection", () => {
   it("keeps a Windows absolute theme path as a bare selection", () => {
     expect(splitThemeSelection("C:/Users/Alex/Ghostty Themes/t3code")).toEqual({
