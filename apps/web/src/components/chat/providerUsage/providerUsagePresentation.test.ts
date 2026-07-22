@@ -1,3 +1,4 @@
+import { ProviderDriverKind } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -6,6 +7,7 @@ import {
   formatProviderUsageRelativeTime,
   formatProviderUsageTokens,
   providerUsageBarHeight,
+  selectProviderUsageIconLevels,
 } from "./providerUsagePresentation";
 
 describe("provider usage presentation", () => {
@@ -31,4 +33,28 @@ describe("provider usage presentation", () => {
     expect(providerUsageBarHeight(25, 100)).toBe(25);
     expect(providerUsageBarHeight(100, 100)).toBe(100);
   });
+
+  it("uses one Codex bar and Claude session plus weekly bars", () => {
+    const windows = [
+      usageWindow("weekly", "Current week (all models)", 62),
+      usageWindow("session", "Current session", 84),
+      usageWindow("review", "Code review", 51),
+    ];
+
+    expect(selectProviderUsageIconLevels(ProviderDriverKind.make("codex"), windows)).toEqual([62]);
+    expect(selectProviderUsageIconLevels(ProviderDriverKind.make("claude"), windows)).toEqual([
+      84, 62,
+    ]);
+  });
 });
+
+function usageWindow(id: string, label: string, remainingPercent: number) {
+  return {
+    id,
+    label,
+    usedPercent: 100 - remainingPercent,
+    remainingPercent,
+    resetsAt: "2026-07-29T12:00:00.000Z",
+    windowDurationMinutes: id === "session" ? 300 : 10_080,
+  };
+}

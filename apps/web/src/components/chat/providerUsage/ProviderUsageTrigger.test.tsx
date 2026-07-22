@@ -27,4 +27,13 @@ describe("ProviderUsageTrigger", () => {
     expect(markup).not.toContain("lucide");
     expect(markup).not.toContain(">Usage<");
   });
+
+  it("renders only one meter row when given one level", () => {
+    const markup = renderToStaticMarkup(
+      <ProviderUsageTrigger providerDisplayName="Codex" expanded={false} remainingLevels={[47]} />,
+    );
+
+    expect(markup).toContain('data-provider-usage-fill="primary"');
+    expect(markup).not.toContain('data-provider-usage-fill="secondary"');
+  });
 });

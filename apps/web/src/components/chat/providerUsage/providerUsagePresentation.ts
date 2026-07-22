@@ -11,6 +11,23 @@ export function orderProviderUsageWindows(
   return [...windows].sort((left, right) => codexWindowRank(left) - codexWindowRank(right));
 }
 
+export function selectProviderUsageIconLevels(
+  driver: ProviderDriverKind,
+  windows: ReadonlyArray<ProviderUsageWindow>,
+): ReadonlyArray<number> {
+  if (driver === "codex") {
+    const weekly = windows.find((window) => windowIdentity(window).includes("week"));
+    return weekly ? [weekly.remainingPercent] : [];
+  }
+
+  const session = windows.find((window) => windowIdentity(window).includes("session"));
+  const weekly = windows.find((window) => {
+    const identity = windowIdentity(window);
+    return identity.includes("week") && !identity.includes("sonnet") && !identity.includes("opus");
+  });
+  return [session, weekly].flatMap((window) => (window ? [window.remainingPercent] : []));
+}
+
 export function formatProviderUsagePercent(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return "—";
   return `${Math.round(value)}%`;
@@ -71,10 +88,14 @@ function trimDecimal(value: number): string {
 }
 
 function codexWindowRank(window: ProviderUsageWindow): number {
-  const identity = `${window.id} ${window.label}`.toLowerCase();
+  const identity = windowIdentity(window);
   if (window.label === "Weekly") return 0;
   if (identity.includes("spark")) return 1;
   if (identity.includes("review")) return 2;
   return 3;
+}
+
+function windowIdentity(window: ProviderUsageWindow): string {
+  return `${window.id} ${window.label}`.toLowerCase();
 }
 import type { ProviderDriverKind, ProviderUsageWindow } from "@t3tools/contracts";

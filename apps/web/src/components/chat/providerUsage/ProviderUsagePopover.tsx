@@ -10,7 +10,7 @@ import { Popover, PopoverPopup, PopoverTrigger } from "../../ui/popover";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import { ProviderUsageDashboard } from "./ProviderUsageDashboard";
 import { ProviderUsageTrigger } from "./ProviderUsageTrigger";
-import { orderProviderUsageWindows } from "./providerUsagePresentation";
+import { selectProviderUsageIconLevels } from "./providerUsagePresentation";
 import {
   filterSupportedProviderUsageSnapshots,
   isProviderUsageDriver,
@@ -110,12 +110,10 @@ function SupportedProviderUsagePopover(props: ProviderUsagePopoverProps) {
                   expanded={open}
                   {...(activeSnapshot
                     ? {
-                        remainingLevels: orderProviderUsageWindows(
+                        remainingLevels: selectProviderUsageIconLevels(
                           activeSnapshot.driver,
                           activeSnapshot.windows,
-                        )
-                          .slice(0, 2)
-                          .map((window) => window.remainingPercent),
+                        ),
                       }
                     : {})}
                 />

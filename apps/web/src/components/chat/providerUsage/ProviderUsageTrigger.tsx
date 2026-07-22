@@ -16,6 +16,7 @@ export function ProviderUsageTrigger({
   remainingLevels = EMPTY_REMAINING_LEVELS,
   ...buttonProps
 }: ProviderUsageTriggerProps) {
+  const primaryY = remainingLevels.length > 1 ? 4 : 6.75;
   return (
     <Button
       {...buttonProps}
@@ -34,7 +35,7 @@ export function ProviderUsageTrigger({
       >
         <rect
           x="3"
-          y="4"
+          y={primaryY}
           width="10"
           height="2.5"
           rx="1.25"
@@ -44,32 +45,36 @@ export function ProviderUsageTrigger({
         />
         <rect
           x="3"
-          y="4"
+          y={primaryY}
           width={levelWidth(remainingLevels[0])}
           height="2.5"
           rx="1.25"
           fill="currentColor"
           data-provider-usage-fill="primary"
         />
-        <rect
-          x="3"
-          y="9.5"
-          width="10"
-          height="2.5"
-          rx="1.25"
-          fill="currentColor"
-          opacity="0.25"
-          data-provider-usage-track="secondary"
-        />
-        <rect
-          x="3"
-          y="9.5"
-          width={levelWidth(remainingLevels[1])}
-          height="2.5"
-          rx="1.25"
-          fill="currentColor"
-          data-provider-usage-fill="secondary"
-        />
+        {remainingLevels.length > 1 ? (
+          <>
+            <rect
+              x="3"
+              y="9.5"
+              width="10"
+              height="2.5"
+              rx="1.25"
+              fill="currentColor"
+              opacity="0.25"
+              data-provider-usage-track="secondary"
+            />
+            <rect
+              x="3"
+              y="9.5"
+              width={levelWidth(remainingLevels[1])}
+              height="2.5"
+              rx="1.25"
+              fill="currentColor"
+              data-provider-usage-fill="secondary"
+            />
+          </>
+        ) : null}
       </svg>
     </Button>
   );
