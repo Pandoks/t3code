@@ -12,6 +12,14 @@ import {
 } from "./externalChats.ts";
 import { WS_METHODS } from "./rpc.ts";
 
+const decodeExternalChatCandidate = Schema.decodeUnknownSync(ExternalChatCandidate);
+const decodeExternalChatImportRequest = Schema.decodeUnknownSync(ExternalChatImportRequest);
+const decodeExternalChatImportResult = Schema.decodeUnknownSync(ExternalChatImportResult);
+const decodeExternalChatListResult = Schema.decodeUnknownSync(ExternalChatListResult);
+const decodeExternalChatRefreshRequest = Schema.decodeUnknownSync(ExternalChatRefreshRequest);
+const decodeExternalChatRefreshResult = Schema.decodeUnknownSync(ExternalChatRefreshResult);
+const decodeNormalizedHistoricalEvent = Schema.decodeUnknownSync(NormalizedHistoricalEvent);
+
 describe("external chat contracts", () => {
   it("declares the typed external chat RPC method names", () => {
     expect(WS_METHODS.externalChatsList).toBe("externalChats.list");
@@ -20,7 +28,7 @@ describe("external chat contracts", () => {
   });
 
   it("decodes complete discovery metadata", () => {
-    const decoded = Schema.decodeUnknownSync(ExternalChatCandidate)({
+    const decoded = decodeExternalChatCandidate({
       source: "codex",
       candidateId: "extchat_v1_0123456789abcdef",
       providerInstanceId: "codex_work",
@@ -48,7 +56,7 @@ describe("external chat contracts", () => {
   });
 
   it("keeps bulk import inputs candidate-based and strips arbitrary filesystem paths", () => {
-    const decoded = Schema.decodeUnknownSync(ExternalChatImportRequest)({
+    const decoded = decodeExternalChatImportRequest({
       candidateIds: ["extchat_v1_0123456789abcdef"],
       projectId: "project-override",
       sourcePath: "/tmp/untrusted.jsonl",
@@ -76,11 +84,9 @@ describe("external chat contracts", () => {
       resumability: { status: "unknown", reason: "Working directory unavailable." },
     } as const;
 
+    expect(decodeExternalChatListResult({ candidates: [candidate] }).candidates).toHaveLength(1);
     expect(
-      Schema.decodeUnknownSync(ExternalChatListResult)({ candidates: [candidate] }).candidates,
-    ).toHaveLength(1);
-    expect(
-      Schema.decodeUnknownSync(ExternalChatImportResult)({
+      decodeExternalChatImportResult({
         results: [
           {
             candidateId: candidate.candidateId,
@@ -92,13 +98,13 @@ describe("external chat contracts", () => {
       }).results[0]?.status,
     ).toBe("imported");
     expect(
-      Schema.decodeUnknownSync(ExternalChatRefreshRequest)({
+      decodeExternalChatRefreshRequest({
         sources: ["claude"],
         providerInstanceIds: ["claude_work"],
       }).sources,
     ).toEqual(["claude"]);
     expect(
-      Schema.decodeUnknownSync(ExternalChatRefreshResult)({
+      decodeExternalChatRefreshResult({
         candidates: [candidate],
         refreshedAt: "2026-07-20T12:00:00.000Z",
       }).refreshedAt,
@@ -106,7 +112,6 @@ describe("external chat contracts", () => {
   });
 
   it("decodes the normalized visible historical-event variants", () => {
-    const decode = Schema.decodeUnknownSync(NormalizedHistoricalEvent);
     const events = [
       { type: "message", role: "user", text: "Fix it", timestamp: "2026-07-20T10:00:00Z" },
       { type: "tool", name: "Read", status: "completed", summary: "src/main.ts" },
@@ -117,22 +122,14 @@ describe("external chat contracts", () => {
       { type: "turn", status: "interrupted", reason: "user interrupt" },
     ];
 
-    expect(events.map((event) => decode(event)).map((event) => event.type)).toEqual([
-      "message",
-      "tool",
-      "command",
-      "fileChange",
-      "plan",
-      "error",
-      "turn",
-    ]);
+    expect(
+      events.map((event) => decodeNormalizedHistoricalEvent(event)).map((event) => event.type),
+    ).toEqual(["message", "tool", "command", "fileChange", "plan", "error", "turn"]);
   });
 
   it("preserves native tool correlation on tool, command, and file-change events", () => {
-    const decode = Schema.decodeUnknownSync(NormalizedHistoricalEvent);
-
     expect(
-      decode({
+      decodeNormalizedHistoricalEvent({
         type: "tool",
         name: "render_diagram",
         status: "completed",
@@ -140,7 +137,7 @@ describe("external chat contracts", () => {
       }),
     ).toMatchObject({ toolUseId: "call-1" });
     expect(
-      decode({
+      decodeNormalizedHistoricalEvent({
         type: "command",
         command: "pnpm test",
         status: "failed",
@@ -149,7 +146,7 @@ describe("external chat contracts", () => {
       }),
     ).toMatchObject({ toolUseId: "tool-2" });
     expect(
-      decode({
+      decodeNormalizedHistoricalEvent({
         type: "fileChange",
         path: "src/server.ts",
         status: "completed",
