@@ -76,7 +76,7 @@ interface ParsedTranscript {
   readonly isSidechain: boolean;
 }
 
-type ClaudeToolCall =
+type NativeToolCall =
   | {
       readonly kind: "command";
       readonly name: string;
@@ -109,6 +109,14 @@ const jsonSummary = (value: unknown): string | undefined => {
   if (value === undefined || value === null) return undefined;
   try {
     return JSON.stringify(value);
+  } catch {
+    return undefined;
+  }
+};
+
+const parseJsonRecord = (value: string): JsonRecord | undefined => {
+  try {
+    return asRecord(JSON.parse(value));
   } catch {
     return undefined;
   }
@@ -236,17 +244,76 @@ const codexToolEventNames: Record<string, string> = {
   view_image_tool_call: "View image",
 };
 
+const codexCommandToolNames = new Set([
+  "bash",
+  "exec",
+  "exec_command",
+  "shell",
+  "shell_command",
+  "terminal",
+]);
+
+const codexFileChangeToolNames = new Set([
+  "apply_patch",
+  "edit_file",
+  "file_edit",
+  "patch",
+  "write_file",
+]);
+
+const classifyCodexCustomTool = (name: string, input: string): NativeToolCall => {
+  const normalizedName = name.toLowerCase();
+  const inputRecord = parseJsonRecord(input);
+  if (codexCommandToolNames.has(normalizedName)) {
+    return {
+      kind: "command",
+      name,
+      command: asString(inputRecord?.cmd) ?? asString(inputRecord?.command) ?? input,
+    };
+  }
+  if (codexFileChangeToolNames.has(normalizedName)) {
+    const path = asString(inputRecord?.path) ?? asString(inputRecord?.file_path);
+    const patch =
+      asString(inputRecord?.patch) ??
+      asString(inputRecord?.diff) ??
+      (inputRecord ? undefined : input);
+    return {
+      kind: "fileChange",
+      name,
+      ...(path ? { path } : {}),
+      ...(patch ? { patch } : {}),
+    };
+  }
+  return { kind: "tool", name };
+};
+
+const messageIdentity = (role: "user" | "assistant", text: string) => `${role}\0${text}`;
+
 const parseCodexTranscript = (contents: string, sourceFile: string): ParsedTranscript => {
   const parsed = parseJsonl(contents);
   const diagnostics = [...parsed.diagnostics];
   const events: Array<TimestampedEvent> = [];
   const seenMessages = new Set<string>();
-  const customToolNames = new Map<string, string>();
+  const customToolCalls = new Map<string, NativeToolCall>();
+  const responseMessageCounts = new Map<string, number>();
+  const eventMessageCounts = new Map<string, number>();
   const timestamps: Array<string> = [];
   let nativeSessionId = NodePath.basename(sourceFile, ".jsonl");
   let cwd: string | undefined;
   let title: string | undefined;
   let hasNativeMetadata = false;
+
+  for (const line of parsed.lines) {
+    if (line.record.type !== "response_item") continue;
+    const payload = asRecord(line.record.payload);
+    if (payload?.type !== "message") continue;
+    const role = asString(payload.role);
+    if (role !== "user" && role !== "assistant") continue;
+    const text = textFromContent(payload.content);
+    if (!text) continue;
+    const identity = messageIdentity(role, text);
+    responseMessageCounts.set(identity, (responseMessageCounts.get(identity) ?? 0) + 1);
+  }
 
   for (const line of parsed.lines) {
     if (line.timestamp) timestamps.push(line.timestamp);
@@ -290,31 +357,66 @@ const parseCodexTranscript = (contents: string, sourceFile: string): ParsedTrans
       if (itemType === "custom_tool_call") {
         const callId = asString(payload.call_id);
         const name = asString(payload.name) ?? "Custom tool";
-        const summary = asString(payload.input);
-        if (callId) customToolNames.set(callId, name);
-        addEvent(events, line.line, line.timestamp, {
-          type: "tool",
-          name,
-          status: normalizeStatus(payload.status),
-          ...(callId ? { toolUseId: callId } : {}),
-          ...(summary ? { summary } : {}),
-        });
+        const input = asString(payload.input) ?? "";
+        const toolCall = classifyCodexCustomTool(name, input);
+        if (callId) customToolCalls.set(callId, toolCall);
+        if (toolCall.kind === "command") {
+          addEvent(events, line.line, line.timestamp, {
+            type: "command",
+            command: toolCall.command,
+            status: normalizeStatus(payload.status),
+            ...(callId ? { toolUseId: callId } : {}),
+          });
+        } else if (toolCall.kind === "fileChange") {
+          addEvent(events, line.line, line.timestamp, {
+            type: "fileChange",
+            ...(toolCall.path ? { path: toolCall.path } : {}),
+            ...(toolCall.patch ? { patch: toolCall.patch } : {}),
+            status: normalizeStatus(payload.status),
+            ...(callId ? { toolUseId: callId } : {}),
+          });
+        } else {
+          addEvent(events, line.line, line.timestamp, {
+            type: "tool",
+            name,
+            status: normalizeStatus(payload.status),
+            ...(callId ? { toolUseId: callId } : {}),
+            ...(input ? { summary: input } : {}),
+          });
+        }
         continue;
       }
       if (itemType === "custom_tool_call_output") {
         const callId = asString(payload.call_id);
-        const name =
-          asString(payload.name) ??
-          (callId ? customToolNames.get(callId) : undefined) ??
-          "Custom tool";
+        const toolCall = callId ? customToolCalls.get(callId) : undefined;
+        const name = asString(payload.name) ?? toolCall?.name ?? "Custom tool";
         const summary = jsonSummary(payload.output);
-        addEvent(events, line.line, line.timestamp, {
-          type: "tool",
-          name,
-          status: "completed",
-          ...(callId ? { toolUseId: callId } : {}),
-          ...(summary ? { summary } : {}),
-        });
+        if (toolCall?.kind === "command") {
+          addEvent(events, line.line, line.timestamp, {
+            type: "command",
+            command: toolCall.command,
+            status: "completed",
+            ...(callId ? { toolUseId: callId } : {}),
+            ...(summary ? { output: summary } : {}),
+          });
+        } else if (toolCall?.kind === "fileChange") {
+          addEvent(events, line.line, line.timestamp, {
+            type: "fileChange",
+            ...(toolCall.path ? { path: toolCall.path } : {}),
+            ...(toolCall.patch ? { patch: toolCall.patch } : {}),
+            status: "completed",
+            ...(callId ? { toolUseId: callId } : {}),
+            ...(summary ? { output: summary } : {}),
+          });
+        } else {
+          addEvent(events, line.line, line.timestamp, {
+            type: "tool",
+            name,
+            status: "completed",
+            ...(callId ? { toolUseId: callId } : {}),
+            ...(summary ? { summary } : {}),
+          });
+        }
         continue;
       }
       if (itemType === "local_shell_call") {
@@ -342,14 +444,14 @@ const parseCodexTranscript = (contents: string, sourceFile: string): ParsedTrans
     if (type === "event_msg" && payload) {
       const eventType = asString(payload.type);
       if (eventType === "user_message" || eventType === "agent_message") {
-        pushMessage(
-          events,
-          seenMessages,
-          line.line,
-          line.timestamp,
-          eventType === "user_message" ? "user" : "assistant",
-          asString(payload.message),
-        );
+        const role = eventType === "user_message" ? "user" : "assistant";
+        const text = asString(payload.message);
+        if (!text) continue;
+        const identity = messageIdentity(role, text);
+        const eventCount = (eventMessageCounts.get(identity) ?? 0) + 1;
+        eventMessageCounts.set(identity, eventCount);
+        if (eventCount <= (responseMessageCounts.get(identity) ?? 0)) continue;
+        pushMessage(events, seenMessages, line.line, line.timestamp, role, text);
         continue;
       }
       if (eventType === "exec_command_begin" || eventType === "exec_command_end") {
@@ -494,7 +596,7 @@ const parseClaudeTranscript = (contents: string, sourceFile: string): ParsedTran
   const diagnostics = [...parsed.diagnostics];
   const events: Array<TimestampedEvent> = [];
   const seenMessages = new Set<string>();
-  const toolCalls = new Map<string, ClaudeToolCall>();
+  const toolCalls = new Map<string, NativeToolCall>();
   const timestamps: Array<string> = [];
   let nativeSessionId = NodePath.basename(sourceFile, ".jsonl");
   let cwd: string | undefined;
@@ -639,7 +741,12 @@ const parseClaudeTranscript = (contents: string, sourceFile: string): ParsedTran
         }
       }
 
-      if (type === "assistant" && asString(message?.stop_reason) === "end_turn") {
+      const stopReason = asString(message?.stop_reason);
+      if (
+        type === "assistant" &&
+        stopReason !== undefined &&
+        ["end_turn", "max_tokens", "refusal", "stop_sequence"].includes(stopReason)
+      ) {
         addEvent(events, line.line * 100 + 99, line.timestamp, {
           type: "turn",
           status: "completed",

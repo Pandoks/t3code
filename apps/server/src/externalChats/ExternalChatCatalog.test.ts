@@ -37,7 +37,7 @@ describe("external native chat catalog", () => {
         preview: "Fix the parser",
         createdAt: "2026-07-20T10:00:00.000Z",
         updatedAt: "2026-07-20T10:00:09.000Z",
-        messageCount: 2,
+        messageCount: 3,
         resumability: { status: "resumable" },
       });
       expect(session?.sourceFile).toMatch(/rollout-alpha\.jsonl$/);
@@ -48,7 +48,12 @@ describe("external native chat catalog", () => {
         "plan",
         "tool",
         "tool",
+        "command",
+        "command",
+        "fileChange",
+        "fileChange",
         "error",
+        "message",
         "message",
         "turn",
         "turn",
@@ -69,16 +74,53 @@ describe("external native chat catalog", () => {
             toolUseId: "custom-1",
             summary: "rendered diagram",
           }),
+          expect.objectContaining({
+            type: "command",
+            command: "pnpm test --filter catalog",
+            status: "started",
+            toolUseId: "custom-shell",
+          }),
+          expect.objectContaining({
+            type: "command",
+            command: "pnpm test --filter catalog",
+            status: "completed",
+            toolUseId: "custom-shell",
+            output: "tests passed",
+          }),
+          expect.objectContaining({
+            type: "fileChange",
+            path: "src/catalog.ts",
+            patch: "@@ -1 +1 @@",
+            status: "started",
+            toolUseId: "custom-patch",
+          }),
+          expect.objectContaining({
+            type: "fileChange",
+            path: "src/catalog.ts",
+            patch: "@@ -1 +1 @@",
+            status: "completed",
+            toolUseId: "custom-patch",
+            output: "Done!",
+          }),
         ]),
       );
+      expect(
+        session?.events
+          .filter((event) => event.type === "message")
+          .map((event) => ({ role: event.role, text: event.text })),
+      ).toEqual([
+        { role: "user", text: "Fix the parser" },
+        { role: "assistant", text: "Implemented the parser." },
+        { role: "user", text: "Fix the parser" },
+      ]);
       expect(session?.events.map((event) => event.timestamp)).toEqual(
         [...(session?.events ?? [])]
           .map((event) => event.timestamp)
           .sort((left, right) => (left ?? "").localeCompare(right ?? "")),
       );
       expect(session?.diagnostics).toEqual([
-        expect.objectContaining({ kind: "malformed", line: 15 }),
-        expect.objectContaining({ kind: "unknown", line: 16, recordType: "future_native_record" }),
+        expect.objectContaining({ kind: "malformed", line: 23 }),
+        expect.objectContaining({ kind: "unknown", line: 24, recordType: "future_native_record" }),
       ]);
 
       const visible = inspect({ candidate: session?.candidate, events: session?.events });
@@ -106,7 +148,7 @@ describe("external native chat catalog", () => {
         preview: "Add import support",
         createdAt: "2026-07-20T11:00:00.000Z",
         updatedAt: "2026-07-20T11:00:09.000Z",
-        messageCount: 3,
+        messageCount: 5,
         resumability: { status: "resumable" },
       });
       expect(session?.events.map((event) => event.type)).toEqual([
@@ -119,6 +161,9 @@ describe("external native chat catalog", () => {
         "command",
         "error",
         "fileChange",
+        "message",
+        "turn",
+        "message",
         "message",
         "turn",
       ]);
@@ -142,15 +187,15 @@ describe("external native chat catalog", () => {
       );
       expect(
         session?.events.filter((event) => event.type === "turn" && event.status === "completed"),
-      ).toHaveLength(1);
+      ).toHaveLength(2);
       expect(
         session?.events.some(
           (event) => event.type === "tool" && (event.name === "Bash" || event.name === "Edit"),
         ),
       ).toBe(false);
       expect(session?.diagnostics).toEqual([
-        expect.objectContaining({ kind: "malformed", line: 10 }),
-        expect.objectContaining({ kind: "unknown", line: 11, recordType: "future-claude-record" }),
+        expect.objectContaining({ kind: "malformed", line: 12 }),
+        expect.objectContaining({ kind: "unknown", line: 13, recordType: "future-claude-record" }),
       ]);
 
       const visible = inspect({ candidate: session?.candidate, events: session?.events });
