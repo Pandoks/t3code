@@ -344,6 +344,17 @@ const make = Effect.gen(function* () {
       };
     }
 
+    if (native.candidate.resumability.status === "not_resumable") {
+      return {
+        candidateId,
+        status: "failed" as const,
+        resumability: native.candidate.resumability,
+        error:
+          native.candidate.resumability.reason ??
+          "This native session cannot be resumed by its provider runtime.",
+      };
+    }
+
     const allProjects = yield* projects.listAll();
     const project = resolveExternalChatProject({
       ...(native.candidate.cwd ? { cwd: native.candidate.cwd } : {}),

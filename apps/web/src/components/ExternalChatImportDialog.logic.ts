@@ -108,7 +108,7 @@ export function getExternalChatCandidateState(candidate: ExternalChatCandidate):
 } {
   const isImported = candidate.alreadyImportedThreadId !== undefined;
   return {
-    canSelect: !isImported,
+    canSelect: !isImported && candidate.resumability.status !== "not_resumable",
     isImported,
     resumabilityLabel:
       candidate.resumability.status === "resumable"

@@ -90,6 +90,14 @@ describe("external chat import presentation", () => {
       resumabilityReason: "Native source is unavailable.",
     });
     expect(toggleExternalChatSelection(new Set(["other"]), imported)).toEqual(new Set(["other"]));
+
+    const incompatible = candidate("incompatible", {
+      resumability: { status: "not_resumable", reason: "Provider cannot resume." },
+    });
+    expect(getExternalChatCandidateState(incompatible).canSelect).toBe(false);
+    expect(toggleExternalChatSelection(new Set(["other"]), incompatible)).toEqual(
+      new Set(["other"]),
+    );
   });
 });
 

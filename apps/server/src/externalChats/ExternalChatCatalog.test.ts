@@ -237,14 +237,7 @@ describe("external native chat catalog", () => {
       yield* Effect.promise(() =>
         NodeFSP.writeFile(
           NodePath.join(projectRoot, "invalid.jsonl"),
-          `${JSON.stringify({
-            type: "user",
-            uuid: "user-1",
-            sessionId: "not-a-runtime-uuid",
-            timestamp: "2026-07-20T11:00:00.000Z",
-            cwd: "/workspace/invalid",
-            message: { role: "user", content: "Keep this history readable" },
-          })}\n`,
+          '{"type":"user","uuid":"user-1","sessionId":"not-a-runtime-uuid","timestamp":"2026-07-20T11:00:00.000Z","cwd":"/workspace/invalid","message":{"role":"user","content":"Keep this history readable"}}\n',
         ),
       );
 
