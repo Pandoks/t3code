@@ -424,6 +424,9 @@ export const ServerTerminalStyle = Schema.Struct({
   /** font-family fallback chain in config order. */
   fontFamily: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
   fontSize: Schema.optional(Schema.Number),
+  /** Ghostty cursor-style; block_hollow renders as block in the web terminal. */
+  cursorStyle: Schema.optional(Schema.Literals(["block", "bar", "underline"])),
+  cursorBlink: Schema.optional(Schema.Boolean),
   light: Schema.optional(ServerTerminalThemeColors),
   dark: Schema.optional(ServerTerminalThemeColors),
 });

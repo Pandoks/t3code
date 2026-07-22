@@ -574,7 +574,8 @@ export function TerminalViewport({
       hasMountedTerminalRef.current = true;
       focusOnInitialSessionSyncRef.current = shouldFocusAfterSetup;
       const terminal = new Terminal({
-        cursorBlink: true,
+        cursorBlink: style?.cursorBlink ?? true,
+        cursorStyle: style?.cursorStyle ?? "block",
         // Ghostty font-size is in points; treat it as CSS px, which reads
         // slightly smaller in the drawer than in Ghostty itself.
         fontSize: style?.fontSize ?? DEFAULT_TERMINAL_FONT_SIZE,
@@ -584,6 +585,9 @@ export function TerminalViewport({
       });
       terminal.loadAddon(fitAddon);
       terminal.open(mount);
+      // ghostty-web's focus target is a contenteditable div covering the
+      // terminal; hide the native text caret so only the canvas cursor shows.
+      mount.style.caretColor = "transparent";
       clearBuiltInLinkProviders(terminal);
       fitTerminalSafely(fitAddon);
       // ghostty-web's open() focuses unconditionally; in split view the

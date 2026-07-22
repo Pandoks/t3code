@@ -7,11 +7,36 @@ import * as Path from "effect/Path";
 
 const PALETTE_SIZE = 16;
 
+type GhosttyCursorStyle = "block" | "bar" | "underline";
+
 interface GhosttyConfigValues {
   readonly fontFamily: ReadonlyArray<string>;
   readonly fontSize: number | undefined;
   readonly theme: string | undefined;
+  readonly cursorStyle: GhosttyCursorStyle | undefined;
+  readonly cursorBlink: boolean | undefined;
   readonly colors: MutableThemeColors;
+}
+
+// Ghostty's block_hollow has no ghostty-web equivalent; render it as block.
+function parseCursorStyle(value: string): GhosttyCursorStyle | undefined {
+  switch (value) {
+    case "block":
+    case "block_hollow":
+      return "block";
+    case "bar":
+      return "bar";
+    case "underline":
+      return "underline";
+    default:
+      return undefined;
+  }
+}
+
+function parseBoolean(value: string): boolean | undefined {
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return undefined;
 }
 
 interface MutableThemeColors {
@@ -80,6 +105,8 @@ export function parseGhosttyConfig(source: string): GhosttyConfigValues {
   const fontFamily: Array<string> = [];
   let fontSize: number | undefined;
   let theme: string | undefined;
+  let cursorStyle: GhosttyCursorStyle | undefined;
+  let cursorBlink: boolean | undefined;
   const colors = emptyColors();
 
   for (const rawLine of source.split("\n")) {
@@ -109,13 +136,19 @@ export function parseGhosttyConfig(source: string): GhosttyConfigValues {
       case "theme":
         theme = value.length > 0 ? value : undefined;
         break;
+      case "cursor-style":
+        cursorStyle = parseCursorStyle(value);
+        break;
+      case "cursor-style-blink":
+        cursorBlink = parseBoolean(value);
+        break;
       default:
         applyColorEntry(colors, key, value);
         break;
     }
   }
 
-  return { fontFamily, fontSize, theme, colors };
+  return { fontFamily, fontSize, theme, cursorStyle, cursorBlink, colors };
 }
 
 /** Split `theme = light:A,dark:B` into per-mode names; a bare name applies to both. */
@@ -283,6 +316,8 @@ export const loadGhosttyTerminalStyle: Effect.Effect<
   const style: ServerTerminalStyle = {
     ...(config.fontFamily.length > 0 ? { fontFamily: config.fontFamily } : {}),
     ...(config.fontSize !== undefined ? { fontSize: config.fontSize } : {}),
+    ...(config.cursorStyle !== undefined ? { cursorStyle: config.cursorStyle } : {}),
+    ...(config.cursorBlink !== undefined ? { cursorBlink: config.cursorBlink } : {}),
     ...(light !== undefined ? { light } : {}),
     ...(dark !== undefined ? { dark } : {}),
   };
@@ -290,6 +325,8 @@ export const loadGhosttyTerminalStyle: Effect.Effect<
   const hasAnyValue =
     style.fontFamily !== undefined ||
     style.fontSize !== undefined ||
+    style.cursorStyle !== undefined ||
+    style.cursorBlink !== undefined ||
     style.light !== undefined ||
     style.dark !== undefined;
   return hasAnyValue ? style : undefined;

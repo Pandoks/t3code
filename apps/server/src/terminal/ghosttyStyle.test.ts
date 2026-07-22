@@ -68,6 +68,32 @@ describe("parseGhosttyConfig bare hex colors", () => {
   });
 });
 
+describe("parseGhosttyConfig cursor settings", () => {
+  it("parses cursor-style and cursor-style-blink", () => {
+    const config = parseGhosttyConfig(`
+      cursor-style = block
+      cursor-style-blink = false
+    `);
+
+    expect(config.cursorStyle).toBe("block");
+    expect(config.cursorBlink).toBe(false);
+  });
+
+  it("maps block_hollow to block and ignores unknown styles", () => {
+    expect(parseGhosttyConfig("cursor-style = block_hollow").cursorStyle).toBe("block");
+    expect(parseGhosttyConfig("cursor-style = wobble").cursorStyle).toBeUndefined();
+    expect(parseGhosttyConfig("cursor-style = bar").cursorStyle).toBe("bar");
+    expect(parseGhosttyConfig("cursor-style = underline").cursorStyle).toBe("underline");
+  });
+
+  it("leaves cursor settings undefined when absent", () => {
+    const config = parseGhosttyConfig("font-size = 12");
+
+    expect(config.cursorStyle).toBeUndefined();
+    expect(config.cursorBlink).toBeUndefined();
+  });
+});
+
 describe("splitThemeSelection", () => {
   it("keeps a Windows absolute theme path as a bare selection", () => {
     expect(splitThemeSelection("C:/Users/Alex/Ghostty Themes/t3code")).toEqual({
