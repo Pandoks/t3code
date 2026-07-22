@@ -1,18 +1,12 @@
-import { DownloadIcon, RotateCwIcon, TriangleAlertIcon, XIcon } from "lucide-react";
-import { useCallback, useState } from "react";
+import { GitMergeIcon, TriangleAlertIcon, XIcon } from "lucide-react";
+import { useState } from "react";
 import { isElectron } from "../../env";
 import { useDesktopUpdateState } from "../../state/desktopUpdate";
-import { stackedThreadToast, toastManager } from "../ui/toast";
 import {
   getArm64IntelBuildWarningDescription,
-  getDesktopUpdateActionError,
   getDesktopUpdateButtonTooltip,
-  getDesktopUpdateInstallConfirmationMessage,
-  isDesktopUpdateButtonDisabled,
-  resolveDesktopUpdateButtonAction,
   shouldShowArm64IntelBuildWarning,
   shouldShowDesktopUpdateButton,
-  shouldToastDesktopUpdateActionResult,
 } from "../desktopUpdate.logic";
 import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
 import { Separator } from "../ui/separator";
@@ -57,86 +51,21 @@ function SidebarUpdateReleaseNotesTooltip({
   );
 }
 
+/**
+ * Fork build: upstream releases cannot be installed in place, so instead of
+ * the download/install actions this pill is a passive reminder to merge
+ * upstream into the fork and rebuild. Release notes stay in the tooltip.
+ */
 export function SidebarUpdatePill() {
   const state = useDesktopUpdateState();
   const [dismissed, setDismissed] = useState(false);
 
   const visible = isElectron && shouldShowDesktopUpdateButton(state) && !dismissed;
   const tooltip = state ? getDesktopUpdateButtonTooltip(state) : "Update available";
-  const disabled = isDesktopUpdateButtonDisabled(state);
-  const action = state ? resolveDesktopUpdateButtonAction(state) : "none";
 
   const showArm64Warning = isElectron && shouldShowArm64IntelBuildWarning(state);
   const arm64Description =
     state && showArm64Warning ? getArm64IntelBuildWarningDescription(state) : null;
-
-  const handleAction = useCallback(() => {
-    const bridge = window.desktopBridge;
-    if (!bridge || !state) return;
-    if (disabled || action === "none") return;
-
-    if (action === "download") {
-      void bridge
-        .downloadUpdate()
-        .then((result) => {
-          if (result.completed) {
-            toastManager.add({
-              type: "success",
-              title: "Update downloaded",
-              description: "Restart the app from the update button to install it.",
-            });
-          }
-          if (!shouldToastDesktopUpdateActionResult(result)) return;
-          const actionError = getDesktopUpdateActionError(result);
-          if (!actionError) return;
-          toastManager.add(
-            stackedThreadToast({
-              type: "error",
-              title: "Could not download update",
-              description: actionError,
-            }),
-          );
-        })
-        .catch((error) => {
-          toastManager.add(
-            stackedThreadToast({
-              type: "error",
-              title: "Could not start update download",
-              description: error instanceof Error ? error.message : "An unexpected error occurred.",
-            }),
-          );
-        });
-      return;
-    }
-
-    if (action === "install") {
-      const confirmed = window.confirm(getDesktopUpdateInstallConfirmationMessage(state));
-      if (!confirmed) return;
-      void bridge
-        .installUpdate()
-        .then((result) => {
-          if (!shouldToastDesktopUpdateActionResult(result)) return;
-          const actionError = getDesktopUpdateActionError(result);
-          if (!actionError) return;
-          toastManager.add(
-            stackedThreadToast({
-              type: "error",
-              title: "Could not install update",
-              description: actionError,
-            }),
-          );
-        })
-        .catch((error) => {
-          toastManager.add(
-            stackedThreadToast({
-              type: "error",
-              title: "Could not install update",
-              description: error instanceof Error ? error.message : "An unexpected error occurred.",
-            }),
-          );
-        });
-    }
-  }, [action, disabled, state]);
 
   if (!visible && !showArm64Warning) return null;
 
@@ -150,45 +79,17 @@ export function SidebarUpdatePill() {
         </Alert>
       )}
       {visible && (
-        <div
-          className={`group/update relative flex h-7 w-full items-center rounded-lg bg-primary/15 text-xs font-medium text-primary ${
-            disabled ? " cursor-not-allowed opacity-60" : ""
-          }`}
-        >
-          <div className="pointer-events-none absolute inset-0 rounded-lg transition-colors group-has-[button.update-main:hover]/update:bg-primary/22" />
+        <div className="group/update relative flex h-7 w-full items-center rounded-lg bg-primary/15 text-xs font-medium text-primary">
           <Tooltip>
             <TooltipTrigger
               render={
-                <button
-                  type="button"
+                <div
                   aria-label={tooltip}
-                  aria-disabled={disabled || undefined}
-                  disabled={disabled}
-                  className="update-main relative flex h-full flex-1 items-center gap-2 px-2 enabled:cursor-pointer"
-                  onClick={handleAction}
+                  className="relative flex h-full flex-1 cursor-default items-center gap-2 px-2"
                 >
-                  {action === "install" ? (
-                    <>
-                      <RotateCwIcon className="size-3.5" />
-                      <span>Restart to update</span>
-                    </>
-                  ) : state?.status === "downloading" ? (
-                    <>
-                      <DownloadIcon className="size-3.5" />
-                      <span>
-                        Downloading
-                        {typeof state.downloadPercent === "number"
-                          ? ` (${Math.floor(state.downloadPercent)}%)`
-                          : "…"}
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <DownloadIcon className="size-3.5" />
-                      <span>Update available</span>
-                    </>
-                  )}
-                </button>
+                  <GitMergeIcon className="size-3.5" />
+                  <span>Upstream updated — merge fork & rebuild</span>
+                </div>
               }
             />
             <TooltipPopup
@@ -207,23 +108,21 @@ export function SidebarUpdatePill() {
               )}
             </TooltipPopup>
           </Tooltip>
-          {action === "download" && (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    type="button"
-                    aria-label="Dismiss update"
-                    className="mr-1 inline-flex size-5 items-center justify-center rounded-md text-primary/60 transition-colors hover:text-primary"
-                    onClick={() => setDismissed(true)}
-                  >
-                    <XIcon className="size-3.5" />
-                  </button>
-                }
-              />
-              <TooltipPopup side="top">Dismiss until next launch</TooltipPopup>
-            </Tooltip>
-          )}
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  aria-label="Dismiss update notice"
+                  className="mr-1 inline-flex size-5 items-center justify-center rounded-md text-primary/60 transition-colors hover:text-primary"
+                  onClick={() => setDismissed(true)}
+                >
+                  <XIcon className="size-3.5" />
+                </button>
+              }
+            />
+            <TooltipPopup side="top">Dismiss until next launch</TooltipPopup>
+          </Tooltip>
         </div>
       )}
     </div>
