@@ -89,6 +89,8 @@ import {
   persistServerRuntimeState,
 } from "./serverRuntimeState.ts";
 import { orchestrationHttpApiLayer } from "./orchestration/http.ts";
+import { ExternalChatImportRepositoryLive } from "./persistence/Layers/ExternalChatImports.ts";
+import { ExternalChatServiceLive } from "./externalChats/ExternalChatService.ts";
 import * as NetService from "@t3tools/shared/Net";
 import * as RelayClient from "@t3tools/shared/relayClient";
 import { disableTailscaleServe, ensureTailscaleServe } from "@t3tools/tailscale";
@@ -181,7 +183,10 @@ const ProviderLayerLive = ProviderServiceLive.pipe(
   Layer.provideMerge(ProviderSessionDirectoryLayerLive),
 );
 
-const PersistenceLayerLive = Layer.empty.pipe(Layer.provideMerge(SqlitePersistenceLayerLive));
+const PersistenceLayerLive = Layer.empty.pipe(
+  Layer.provideMerge(ExternalChatImportRepositoryLive),
+  Layer.provideMerge(SqlitePersistenceLayerLive),
+);
 
 const VcsDriverRegistryLayerLive = VcsDriverRegistry.layer.pipe(
   Layer.provide(VcsProjectConfig.layer),
@@ -342,9 +347,10 @@ const RuntimeDependenciesLive = RuntimeCoreDependenciesLive.pipe(
   Layer.provide(NetService.layer),
 );
 
-const RuntimeServicesLive = ServerRuntimeStartup.layer.pipe(
-  Layer.provideMerge(RuntimeDependenciesLive),
-);
+const RuntimeServicesLive = Layer.mergeAll(
+  ServerRuntimeStartup.layer,
+  ExternalChatServiceLive,
+).pipe(Layer.provideMerge(RuntimeDependenciesLive));
 
 export const makeRoutesLayer = Layer.mergeAll(
   Layer.mergeAll(

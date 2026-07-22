@@ -143,8 +143,21 @@ import {
   SourceControlRepositoryLookupInput,
 } from "./sourceControl.ts";
 import { VcsError } from "./vcs.ts";
+import {
+  ExternalChatImportRequest,
+  ExternalChatImportResult,
+  ExternalChatListRequest,
+  ExternalChatListResult,
+  ExternalChatRefreshRequest,
+  ExternalChatRefreshResult,
+  ExternalChatRpcError,
+} from "./externalChats.ts";
 
 export const WS_METHODS = {
+  externalChatsList: "externalChats.list",
+  externalChatsRefresh: "externalChats.refresh",
+  externalChatsImport: "externalChats.import",
+
   // Project registry methods
   projectsList: "projects.list",
   projectsAdd: "projects.add",
@@ -234,6 +247,24 @@ export const WS_METHODS = {
   subscribeServerLifecycle: "subscribeServerLifecycle",
   subscribeAuthAccess: "subscribeAuthAccess",
 } as const;
+
+export const WsExternalChatsListRpc = Rpc.make(WS_METHODS.externalChatsList, {
+  payload: ExternalChatListRequest,
+  success: ExternalChatListResult,
+  error: Schema.Union([ExternalChatRpcError, EnvironmentAuthorizationError]),
+});
+
+export const WsExternalChatsRefreshRpc = Rpc.make(WS_METHODS.externalChatsRefresh, {
+  payload: ExternalChatRefreshRequest,
+  success: ExternalChatRefreshResult,
+  error: Schema.Union([ExternalChatRpcError, EnvironmentAuthorizationError]),
+});
+
+export const WsExternalChatsImportRpc = Rpc.make(WS_METHODS.externalChatsImport, {
+  payload: ExternalChatImportRequest,
+  success: ExternalChatImportResult,
+  error: Schema.Union([ExternalChatRpcError, EnvironmentAuthorizationError]),
+});
 
 export const WsServerUpsertKeybindingRpc = Rpc.make(WS_METHODS.serverUpsertKeybinding, {
   payload: ServerUpsertKeybindingInput,
@@ -689,6 +720,9 @@ export const WsSubscribeAuthAccessRpc = Rpc.make(WS_METHODS.subscribeAuthAccess,
 });
 
 export const WsRpcGroup = RpcGroup.make(
+  WsExternalChatsListRpc,
+  WsExternalChatsRefreshRpc,
+  WsExternalChatsImportRpc,
   WsServerProbeRpc,
   WsServerGetConfigRpc,
   WsServerRefreshProvidersRpc,

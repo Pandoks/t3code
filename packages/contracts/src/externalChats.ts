@@ -1,6 +1,12 @@
 import * as Schema from "effect/Schema";
 
-import { IsoDateTime, NonNegativeInt, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import {
+  IsoDateTime,
+  NonNegativeInt,
+  ProjectId,
+  ThreadId,
+  TrimmedNonEmptyString,
+} from "./baseSchemas.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
 
 export const ExternalChatSource = Schema.Literals(["codex", "claude"]);
@@ -121,16 +127,32 @@ export const ExternalChatListResult = Schema.Struct({
 export type ExternalChatListResult = typeof ExternalChatListResult.Type;
 
 export const ExternalChatImportRequest = Schema.Struct({
-  candidateId: ExternalChatCandidateId,
+  candidateIds: Schema.Array(ExternalChatCandidateId),
+  projectId: Schema.optionalKey(ProjectId),
 });
 export type ExternalChatImportRequest = typeof ExternalChatImportRequest.Type;
 
-export const ExternalChatImportResult = Schema.Struct({
+export const ExternalChatImportItemResult = Schema.Struct({
   candidateId: ExternalChatCandidateId,
-  threadId: ThreadId,
-  status: Schema.Literals(["imported", "already_imported"]),
+  threadId: Schema.optionalKey(ThreadId),
+  status: Schema.Literals(["imported", "skipped", "failed"]),
+  resumability: ExternalChatResumability,
+  error: Schema.optionalKey(TrimmedNonEmptyString),
+});
+export type ExternalChatImportItemResult = typeof ExternalChatImportItemResult.Type;
+
+export const ExternalChatImportResult = Schema.Struct({
+  results: Schema.Array(ExternalChatImportItemResult),
 });
 export type ExternalChatImportResult = typeof ExternalChatImportResult.Type;
+
+export class ExternalChatRpcError extends Schema.TaggedErrorClass<ExternalChatRpcError>()(
+  "ExternalChatRpcError",
+  {
+    operation: Schema.String,
+    message: TrimmedNonEmptyString,
+  },
+) {}
 
 export const ExternalChatRefreshRequest = ExternalChatListRequest;
 export type ExternalChatRefreshRequest = typeof ExternalChatRefreshRequest.Type;

@@ -10,8 +10,15 @@ import {
   ExternalChatRefreshResult,
   NormalizedHistoricalEvent,
 } from "./externalChats.ts";
+import { WS_METHODS } from "./rpc.ts";
 
 describe("external chat contracts", () => {
+  it("declares the typed external chat RPC method names", () => {
+    expect(WS_METHODS.externalChatsList).toBe("externalChats.list");
+    expect(WS_METHODS.externalChatsRefresh).toBe("externalChats.refresh");
+    expect(WS_METHODS.externalChatsImport).toBe("externalChats.import");
+  });
+
   it("decodes complete discovery metadata", () => {
     const decoded = Schema.decodeUnknownSync(ExternalChatCandidate)({
       source: "codex",
@@ -40,13 +47,17 @@ describe("external chat contracts", () => {
     });
   });
 
-  it("keeps import inputs candidate-based and strips arbitrary filesystem paths", () => {
+  it("keeps bulk import inputs candidate-based and strips arbitrary filesystem paths", () => {
     const decoded = Schema.decodeUnknownSync(ExternalChatImportRequest)({
-      candidateId: "extchat_v1_0123456789abcdef",
+      candidateIds: ["extchat_v1_0123456789abcdef"],
+      projectId: "project-override",
       sourcePath: "/tmp/untrusted.jsonl",
     });
 
-    expect(decoded).toEqual({ candidateId: "extchat_v1_0123456789abcdef" });
+    expect(decoded).toEqual({
+      candidateIds: ["extchat_v1_0123456789abcdef"],
+      projectId: "project-override",
+    });
     expect(decoded).not.toHaveProperty("sourcePath");
   });
 
@@ -70,10 +81,15 @@ describe("external chat contracts", () => {
     ).toHaveLength(1);
     expect(
       Schema.decodeUnknownSync(ExternalChatImportResult)({
-        candidateId: candidate.candidateId,
-        threadId: "thread-new",
-        status: "imported",
-      }).status,
+        results: [
+          {
+            candidateId: candidate.candidateId,
+            threadId: "thread-new",
+            status: "imported",
+            resumability: candidate.resumability,
+          },
+        ],
+      }).results[0]?.status,
     ).toBe("imported");
     expect(
       Schema.decodeUnknownSync(ExternalChatRefreshRequest)({
