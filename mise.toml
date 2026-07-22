@@ -1,5 +1,5 @@
 [tools]
 node = "24.13.1"
 pnpm = "11.10.0"
-vp = "0.2.2"
+"ubi:voidzero-dev/vite-plus" = { version = "0.2.5", exe = "vp" }
 bun = "1.3.14"
