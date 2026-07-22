@@ -8,8 +8,11 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   applyExternalChatImportResults,
   buildExternalChatImportBatches,
+  failedExternalChatImportBatchResults,
   filterAndGroupExternalChats,
   getExternalChatCandidateState,
+  reconcileExternalChatRefreshState,
+  resolveInitialExternalChatEnvironmentId,
   resolveExternalChatImportNavigationTarget,
   summarizeExternalChatImport,
   toggleExternalChatSelection,
@@ -123,6 +126,62 @@ describe("external chat import selection and mapping", () => {
       }),
     ).toEqual({ batches: [], unresolvedCandidateIds: [unresolved.candidateId] });
   });
+
+  it("prunes selections and project mappings for candidates removed by refresh", () => {
+    const alpha = candidate("alpha");
+
+    expect(
+      reconcileExternalChatRefreshState({
+        candidates: [alpha],
+        selectedIds: new Set([alpha.candidateId, "removed"]),
+        projectMapping: { [alpha.candidateId]: "project-alpha", removed: "project-removed" },
+      }),
+    ).toEqual({
+      selectedIds: new Set([alpha.candidateId]),
+      projectMapping: { [alpha.candidateId]: "project-alpha" },
+    });
+
+    const empty = reconcileExternalChatRefreshState({
+      candidates: [],
+      selectedIds: new Set(["removed"]),
+      projectMapping: { removed: "project-removed" },
+    });
+    expect(empty.selectedIds.size).toBe(0);
+    expect(
+      buildExternalChatImportBatches({
+        candidates: [],
+        selectedIds: empty.selectedIds,
+        projects: [project("project-removed", "/work/removed")],
+        projectMapping: empty.projectMapping,
+      }).batches,
+    ).toEqual([]);
+  });
+});
+
+describe("external chat import environment", () => {
+  it("prefers the current environment, then primary, then the first available environment", () => {
+    expect(
+      resolveInitialExternalChatEnvironmentId({
+        availableEnvironmentIds: ["primary", "remote"],
+        activeEnvironmentId: "remote",
+        primaryEnvironmentId: "primary",
+      }),
+    ).toBe("remote");
+    expect(
+      resolveInitialExternalChatEnvironmentId({
+        availableEnvironmentIds: ["primary", "remote"],
+        activeEnvironmentId: "missing",
+        primaryEnvironmentId: "primary",
+      }),
+    ).toBe("primary");
+    expect(
+      resolveInitialExternalChatEnvironmentId({
+        availableEnvironmentIds: ["remote"],
+        activeEnvironmentId: null,
+        primaryEnvironmentId: null,
+      }),
+    ).toBe("remote");
+  });
 });
 
 describe("external chat import results", () => {
@@ -151,6 +210,32 @@ describe("external chat import results", () => {
       failedCount: 1,
       errorsByCandidateId: new Map([["beta", "Native source moved."]]),
     });
+  });
+
+  it("expands a request-level batch failure into one result per candidate", () => {
+    const alpha = candidate("alpha");
+    const beta = candidate("beta", {
+      resumability: { status: "not_resumable", reason: "Provider cannot resume." },
+    });
+
+    const failedResults = failedExternalChatImportBatchResults({
+      candidateIds: [alpha.candidateId, beta.candidateId],
+      candidates: [alpha, beta],
+      error: "Remote server disconnected.",
+    });
+    expect(failedResults).toEqual([
+      result("alpha", "failed", { error: "Remote server disconnected." }),
+      result("beta", "failed", {
+        error: "Remote server disconnected.",
+        resumability: beta.resumability,
+      }),
+    ]);
+    expect(
+      summarizeExternalChatImport([
+        result("gamma", "imported", { threadId: "thread-gamma" }),
+        ...failedResults,
+      ]),
+    ).toMatchObject({ importedCount: 1, failedCount: 2 });
   });
 
   it("navigates to the newest newly imported thread", () => {

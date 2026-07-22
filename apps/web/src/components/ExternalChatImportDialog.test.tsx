@@ -2,7 +2,13 @@ import type { ExternalChatCandidate } from "@t3tools/contracts";
 import { Children, isValidElement, type ReactElement, type ReactNode } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { ExternalChatCandidateRow, ExternalChatImportTrigger } from "./ExternalChatImportDialog";
+import {
+  ExternalChatCandidateRow,
+  ExternalChatEnvironmentSelector,
+  ExternalChatErrorAlert,
+  ExternalChatImportSearchInput,
+  ExternalChatImportTrigger,
+} from "./ExternalChatImportDialog";
 
 const candidate = (overrides: Record<string, unknown> = {}): ExternalChatCandidate =>
   ({
@@ -37,6 +43,58 @@ describe("ExternalChatImportTrigger", () => {
     expect(textContent(trigger)).toContain("Import chats…");
     tooltipTrigger.props.render.props.onClick();
     expect(onOpen).toHaveBeenCalledOnce();
+  });
+
+  it("uses the adjacent 28px bordered control pattern in SidebarV2", () => {
+    const trigger = ExternalChatImportTrigger({
+      onOpen: vi.fn(),
+      tooltipSide: "right",
+      variant: "sidebar-v2",
+    });
+
+    expect(trigger.props.className).toContain("size-7");
+    expect(trigger.props.className).toContain("border");
+    expect(trigger.props["aria-label"]).toBe("Import chats");
+  });
+});
+
+describe("ExternalChatImportDialog controls", () => {
+  it("gives chat search a programmatic accessible name", () => {
+    const search = ExternalChatImportSearchInput({ value: "", onChange: vi.fn() });
+    const input = Children.toArray(search.props.children)[1] as ReactElement<{
+      readonly "aria-label"?: string;
+    }>;
+
+    expect(input.props["aria-label"]).toBe("Search external chats");
+  });
+
+  it("offers every connected environment when more than one is available", () => {
+    const onEnvironmentChange = vi.fn();
+    const selector = ExternalChatEnvironmentSelector({
+      environments: [
+        { environmentId: "primary", label: "This Mac" },
+        { environmentId: "remote", label: "Remote Mac" },
+      ],
+      environmentId: "remote",
+      onEnvironmentChange,
+    });
+
+    expect(selector).not.toBeNull();
+    expect(textContent(selector)).toContain("This Mac");
+    expect(textContent(selector)).toContain("Remote Mac");
+    expect(selector!.props.value).toBe("remote");
+  });
+
+  it("uses action-specific mutation wording instead of list-unavailable wording", () => {
+    expect(
+      textContent(ExternalChatErrorAlert({ kind: "list", message: "No connection." })),
+    ).toContain("External chats unavailable");
+    expect(
+      textContent(ExternalChatErrorAlert({ kind: "refresh", message: "Refresh timed out." })),
+    ).toContain("Refresh failed");
+    expect(
+      textContent(ExternalChatErrorAlert({ kind: "import", message: "Import timed out." })),
+    ).toContain("Import failed");
   });
 });
 

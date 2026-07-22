@@ -1368,7 +1368,7 @@ export default function SidebarV2() {
               </CommandDialogTrigger>
             </SidebarMenuItem>
             <SidebarMenuItem className="shrink-0">
-              <ExternalChatImportSidebarAction tooltipSide="right" />
+              <ExternalChatImportSidebarAction tooltipSide="right" variant="sidebar-v2" />
             </SidebarMenuItem>
             <SidebarMenuItem className="shrink-0">
               <SidebarMenuButton

@@ -25,6 +25,21 @@ export interface ExternalChatImportBatch {
   readonly candidateIds: ReadonlyArray<ExternalChatCandidateId>;
 }
 
+export function resolveInitialExternalChatEnvironmentId<T extends string>(input: {
+  readonly availableEnvironmentIds: ReadonlyArray<T>;
+  readonly activeEnvironmentId: T | string | null;
+  readonly primaryEnvironmentId: T | string | null;
+}): T | null {
+  const availableIds = new Set<string>(input.availableEnvironmentIds);
+  if (input.activeEnvironmentId !== null && availableIds.has(input.activeEnvironmentId)) {
+    return input.activeEnvironmentId as T;
+  }
+  if (input.primaryEnvironmentId !== null && availableIds.has(input.primaryEnvironmentId)) {
+    return input.primaryEnvironmentId as T;
+  }
+  return input.availableEnvironmentIds[0] ?? null;
+}
+
 function normalizePath(path: string): string {
   const normalized = path.trim().replaceAll("\\", "/").replace(/\/+$/u, "");
   return normalized.length === 0 ? "/" : normalized;
@@ -149,6 +164,28 @@ export function buildExternalChatImportBatches(input: {
   };
 }
 
+export function reconcileExternalChatRefreshState(input: {
+  readonly candidates: ReadonlyArray<ExternalChatCandidate>;
+  readonly selectedIds: ReadonlySet<ExternalChatCandidateId | string>;
+  readonly projectMapping: Readonly<Record<string, ProjectId | string | undefined>>;
+}): {
+  readonly selectedIds: Set<ExternalChatCandidateId | string>;
+  readonly projectMapping: Record<string, ProjectId | string>;
+} {
+  const candidateIds = new Set<string>(input.candidates.map((candidate) => candidate.candidateId));
+  return {
+    selectedIds: new Set(
+      [...input.selectedIds].filter((candidateId) => candidateIds.has(candidateId)),
+    ),
+    projectMapping: Object.fromEntries(
+      Object.entries(input.projectMapping).filter(
+        (entry): entry is [string, ProjectId | string] =>
+          candidateIds.has(entry[0]) && entry[1] !== undefined,
+      ),
+    ),
+  };
+}
+
 export function summarizeExternalChatImport(results: ReadonlyArray<ExternalChatImportItemResult>): {
   readonly importedCount: number;
   readonly skippedCount: number;
@@ -168,6 +205,25 @@ export function summarizeExternalChatImport(results: ReadonlyArray<ExternalChatI
     }
   }
   return { importedCount, skippedCount, failedCount, errorsByCandidateId };
+}
+
+export function failedExternalChatImportBatchResults(input: {
+  readonly candidateIds: ReadonlyArray<ExternalChatCandidateId>;
+  readonly candidates: ReadonlyArray<ExternalChatCandidate>;
+  readonly error: string;
+}): ExternalChatImportItemResult[] {
+  const candidatesById = new Map(
+    input.candidates.map((candidate) => [candidate.candidateId, candidate] as const),
+  );
+  return input.candidateIds.map((candidateId) => ({
+    candidateId,
+    status: "failed",
+    resumability: candidatesById.get(candidateId)?.resumability ?? {
+      status: "unknown",
+      reason: "Candidate metadata is unavailable.",
+    },
+    error: input.error,
+  }));
 }
 
 export function applyExternalChatImportResults(
