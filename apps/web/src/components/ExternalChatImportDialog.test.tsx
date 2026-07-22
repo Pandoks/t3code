@@ -6,8 +6,11 @@ import {
   ExternalChatCandidateRow,
   ExternalChatEnvironmentSelector,
   ExternalChatErrorAlert,
+  ExternalChatImportActionButton,
+  ExternalChatImportDialogFrame,
   ExternalChatImportSearchInput,
   ExternalChatImportTrigger,
+  ExternalChatRefreshButton,
 } from "./ExternalChatImportDialog";
 
 const candidate = (overrides: Record<string, unknown> = {}): ExternalChatCandidate =>
@@ -30,6 +33,19 @@ function textContent(node: ReactNode): string {
   if (typeof node === "string" || typeof node === "number") return String(node);
   if (!isValidElement<{ readonly children?: ReactNode }>(node)) return "";
   return Children.toArray(node.props.children).map(textContent).join(" ");
+}
+
+function findElement(
+  node: ReactNode,
+  predicate: (element: ReactElement<Record<string, unknown>>) => boolean,
+): ReactElement<Record<string, unknown>> | null {
+  if (!isValidElement<Record<string, unknown>>(node)) return null;
+  if (predicate(node)) return node;
+  for (const child of Children.toArray(node.props.children as ReactNode)) {
+    const match = findElement(child, predicate);
+    if (match) return match;
+  }
+  return null;
 }
 
 describe("ExternalChatImportTrigger", () => {
@@ -59,6 +75,55 @@ describe("ExternalChatImportTrigger", () => {
 });
 
 describe("ExternalChatImportDialog controls", () => {
+  it("makes refresh and import mutually exclusive", () => {
+    const onRefresh = vi.fn();
+    const refresh = ExternalChatRefreshButton({
+      isRefreshing: false,
+      isImporting: true,
+      onRefresh,
+    });
+    expect(refresh.props.disabled).toBe(true);
+    refresh.props.onClick();
+    expect(onRefresh).not.toHaveBeenCalled();
+
+    const onImport = vi.fn();
+    const importAction = ExternalChatImportActionButton({
+      selectedCount: 1,
+      hasUnresolvedCandidates: false,
+      hasEnvironment: true,
+      isRefreshing: true,
+      isImporting: false,
+      onImport,
+    });
+    expect(importAction.props.disabled).toBe(true);
+    importAction.props.onClick();
+    expect(onImport).not.toHaveBeenCalled();
+  });
+
+  it("ignores every root close request while import is active", () => {
+    const onOpenChange = vi.fn();
+    const importingFrame = ExternalChatImportDialogFrame({
+      open: true,
+      isImporting: true,
+      onOpenChange,
+      children: null,
+    });
+
+    importingFrame.props.onOpenChange(false);
+    expect(onOpenChange).not.toHaveBeenCalled();
+    importingFrame.props.onOpenChange(true);
+    expect(onOpenChange).toHaveBeenCalledWith(true);
+
+    const idleFrame = ExternalChatImportDialogFrame({
+      open: true,
+      isImporting: false,
+      onOpenChange,
+      children: null,
+    });
+    idleFrame.props.onOpenChange(false);
+    expect(onOpenChange).toHaveBeenLastCalledWith(false);
+  });
+
   it("gives chat search a programmatic accessible name", () => {
     const search = ExternalChatImportSearchInput({ value: "", onChange: vi.fn() });
     const input = Children.toArray(search.props.children)[1] as ReactElement<{
@@ -99,6 +164,29 @@ describe("ExternalChatImportDialog controls", () => {
 });
 
 describe("ExternalChatCandidateRow", () => {
+  it("prevents selection mutation while another lifecycle request is active", () => {
+    const onSelect = vi.fn();
+    const row = ExternalChatCandidateRow({
+      candidate: candidate(),
+      selected: false,
+      disabled: true,
+      destinationProjectId: null,
+      projects: [],
+      error: null,
+      onSelect,
+      onProjectChange: vi.fn(),
+      onOpenImported: vi.fn(),
+    });
+    const checkbox = findElement(
+      row,
+      (element) => element.props["aria-label"] === "Select Investigate reconnect",
+    );
+
+    expect(checkbox?.props.disabled).toBe(true);
+    (checkbox?.props.onCheckedChange as (() => void) | undefined)?.();
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
   it("links an imported unavailable chat and presents it as read-only", () => {
     const row = ExternalChatCandidateRow({
       candidate: candidate({ alreadyImportedThreadId: "thread-existing" }),

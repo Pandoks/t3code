@@ -23,7 +23,7 @@ import {
   RefreshCwIcon,
   SearchIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { useAtomCommand } from "../state/use-atom-command";
 import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
@@ -192,9 +192,79 @@ export function ExternalChatErrorAlert(props: {
   );
 }
 
+export function ExternalChatRefreshButton(props: {
+  readonly isRefreshing: boolean;
+  readonly isImporting: boolean;
+  readonly onRefresh: () => void;
+}) {
+  const disabled = props.isRefreshing || props.isImporting;
+  return (
+    <Button
+      size="icon-sm"
+      variant="ghost"
+      disabled={disabled}
+      onClick={() => {
+        if (!disabled) props.onRefresh();
+      }}
+    >
+      <RefreshCwIcon className={cn(props.isRefreshing && "animate-spin")} />
+      <span className="sr-only">Refresh chats</span>
+    </Button>
+  );
+}
+
+export function ExternalChatImportActionButton(props: {
+  readonly selectedCount: number;
+  readonly hasUnresolvedCandidates: boolean;
+  readonly hasEnvironment: boolean;
+  readonly isRefreshing: boolean;
+  readonly isImporting: boolean;
+  readonly onImport: () => void;
+}) {
+  const disabled =
+    props.selectedCount === 0 ||
+    props.hasUnresolvedCandidates ||
+    !props.hasEnvironment ||
+    props.isRefreshing ||
+    props.isImporting;
+  return (
+    <Button
+      disabled={disabled}
+      onClick={() => {
+        if (!disabled) props.onImport();
+      }}
+    >
+      {props.isImporting ? <LoaderCircleIcon className="animate-spin" /> : <ImportIcon />}
+      {props.isImporting
+        ? "Importing…"
+        : `Import ${props.selectedCount || ""} chat${props.selectedCount === 1 ? "" : "s"}`}
+    </Button>
+  );
+}
+
+export function ExternalChatImportDialogFrame(props: {
+  readonly open: boolean;
+  readonly isImporting: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+  readonly children: ReactNode;
+}) {
+  return (
+    <Dialog
+      open={props.open}
+      onOpenChange={(open) => {
+        if (!open && props.isImporting) return;
+        props.onOpenChange(open);
+      }}
+    >
+      {props.children}
+    </Dialog>
+  );
+}
+
 export function ExternalChatCandidateRow(props: {
   readonly candidate: ExternalChatCandidate;
   readonly selected: boolean;
+  readonly disabled?: boolean;
   readonly destinationProjectId: ProjectId | string | null;
   readonly projects: ReadonlyArray<ExternalChatImportProject>;
   readonly error: string | null;
@@ -216,9 +286,11 @@ export function ExternalChatCandidateRow(props: {
         <Checkbox
           className="mt-0.5"
           checked={props.selected}
-          disabled={!state.canSelect}
+          disabled={props.disabled || !state.canSelect}
           aria-label={`Select ${props.candidate.title}`}
-          onCheckedChange={props.onSelect}
+          onCheckedChange={() => {
+            if (!props.disabled) props.onSelect();
+          }}
         />
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-2">
@@ -258,8 +330,9 @@ export function ExternalChatCandidateRow(props: {
               ) : (
                 <Select
                   value={props.destinationProjectId}
+                  disabled={props.disabled}
                   onValueChange={(projectId) => {
-                    if (projectId !== null) props.onProjectChange(projectId);
+                    if (!props.disabled && projectId !== null) props.onProjectChange(projectId);
                   }}
                 >
                   <SelectTrigger
@@ -293,7 +366,12 @@ export function ExternalChatCandidateRow(props: {
               className="mt-2"
               size="xs"
               variant="outline"
-              onClick={() => props.onOpenImported(props.candidate.alreadyImportedThreadId!)}
+              disabled={props.disabled}
+              onClick={() => {
+                if (!props.disabled) {
+                  props.onOpenImported(props.candidate.alreadyImportedThreadId!);
+                }
+              }}
             >
               Open imported chat
               <ExternalLinkIcon />
@@ -395,6 +473,7 @@ export function ExternalChatImportDialog(props: {
   }, [props.open]);
 
   const handleEnvironmentChange = (nextEnvironmentId: EnvironmentId | string) => {
+    if (isRefreshing || isImporting) return;
     environmentSelectionIsExplicitRef.current = true;
     setEnvironmentId(nextEnvironmentId as EnvironmentId);
     setSelectedIds(new Set());
@@ -432,6 +511,7 @@ export function ExternalChatImportDialog(props: {
   const unresolvedIds = new Set(batchPlan.unresolvedCandidateIds);
 
   const toggleSource = (source: ExternalChatSource) => {
+    if (isRefreshing || isImporting) return;
     setSources((current) => {
       const next = new Set(current);
       if (next.has(source) && next.size > 1) next.delete(source);
@@ -442,18 +522,18 @@ export function ExternalChatImportDialog(props: {
 
   const openThread = useCallback(
     (threadId: ThreadId) => {
-      if (!environmentId) return;
+      if (!environmentId || isImporting) return;
       props.onOpenChange(false);
       void router.navigate({
         to: "/$environmentId/$threadId",
         params: buildThreadRouteParams(scopeThreadRef(environmentId, threadId)),
       });
     },
-    [environmentId, props, router],
+    [environmentId, isImporting, props, router],
   );
 
   const handleRefresh = async () => {
-    if (!environmentId || isRefreshing) return;
+    if (!environmentId || isRefreshing || isImporting) return;
     setIsRefreshing(true);
     setMutationError(null);
     const result = await refreshChats({ environmentId, input: {} });
@@ -483,7 +563,14 @@ export function ExternalChatImportDialog(props: {
   };
 
   const handleImport = async () => {
-    if (!environmentId || selectedIds.size === 0 || unresolvedIds.size > 0 || isImporting) return;
+    if (
+      !environmentId ||
+      selectedIds.size === 0 ||
+      unresolvedIds.size > 0 ||
+      isRefreshing ||
+      isImporting
+    )
+      return;
     setIsImporting(true);
     setMutationError(null);
     setResultErrors(new Map());
@@ -539,9 +626,14 @@ export function ExternalChatImportDialog(props: {
     visibleSelectableIds.length > 0 &&
     visibleSelectableIds.every((candidateId) => selectedIds.has(candidateId));
   const listError = refreshedCandidates === null ? listQuery.error : null;
+  const lifecycleMutationDisabled = isRefreshing || isImporting;
 
   return (
-    <Dialog open={props.open} onOpenChange={props.onOpenChange}>
+    <ExternalChatImportDialogFrame
+      open={props.open}
+      isImporting={isImporting}
+      onOpenChange={props.onOpenChange}
+    >
       <DialogPopup className="max-w-3xl">
         <DialogHeader>
           <div className="flex items-center justify-between gap-4">
@@ -570,16 +662,18 @@ export function ExternalChatImportDialog(props: {
               key={source}
               size="sm"
               variant={sources.has(source) ? "secondary" : "outline"}
+              disabled={lifecycleMutationDisabled}
               aria-pressed={sources.has(source)}
               onClick={() => toggleSource(source)}
             >
               {SOURCE_LABELS[source]}
             </Button>
           ))}
-          <Button size="icon-sm" variant="ghost" onClick={() => void handleRefresh()}>
-            <RefreshCwIcon className={cn(isRefreshing && "animate-spin")} />
-            <span className="sr-only">Refresh chats</span>
-          </Button>
+          <ExternalChatRefreshButton
+            isRefreshing={isRefreshing}
+            isImporting={isImporting}
+            onRefresh={() => void handleRefresh()}
+          />
         </div>
         <DialogPanel className="min-h-72 space-y-4 pt-4">
           {listError ? <ExternalChatErrorAlert kind="list" message={listError} /> : null}
@@ -640,6 +734,7 @@ export function ExternalChatImportDialog(props: {
                         key={candidate.candidateId}
                         candidate={candidate}
                         selected={selectedIds.has(candidate.candidateId)}
+                        disabled={lifecycleMutationDisabled}
                         destinationProjectId={destinationProjectId}
                         projects={projects}
                         error={
@@ -650,6 +745,7 @@ export function ExternalChatImportDialog(props: {
                             : null)
                         }
                         onSelect={() =>
+                          !lifecycleMutationDisabled &&
                           setSelectedIds(
                             (current) =>
                               toggleExternalChatSelection(
@@ -659,6 +755,7 @@ export function ExternalChatImportDialog(props: {
                           )
                         }
                         onProjectChange={(projectId) =>
+                          !lifecycleMutationDisabled &&
                           setProjectMapping((current) => ({
                             ...current,
                             [candidate.candidateId]: projectId as ProjectId,
@@ -681,8 +778,9 @@ export function ExternalChatImportDialog(props: {
                 !allVisibleSelected &&
                 visibleSelectableIds.some((candidateId) => selectedIds.has(candidateId))
               }
-              disabled={visibleSelectableIds.length === 0 || isImporting}
-              onCheckedChange={() =>
+              disabled={visibleSelectableIds.length === 0 || lifecycleMutationDisabled}
+              onCheckedChange={() => {
+                if (lifecycleMutationDisabled) return;
                 setSelectedIds((current) => {
                   const next = new Set(current);
                   if (allVisibleSelected) {
@@ -691,8 +789,8 @@ export function ExternalChatImportDialog(props: {
                     for (const candidateId of visibleSelectableIds) next.add(candidateId);
                   }
                   return next;
-                })
-              }
+                });
+              }}
             />
             Select visible
           </label>
@@ -700,25 +798,24 @@ export function ExternalChatImportDialog(props: {
             <Button
               variant="ghost"
               disabled={isImporting}
-              onClick={() => props.onOpenChange(false)}
+              onClick={() => {
+                if (!isImporting) props.onOpenChange(false);
+              }}
             >
               Close
             </Button>
-            <Button
-              disabled={
-                selectedIds.size === 0 || unresolvedIds.size > 0 || isImporting || !environmentId
-              }
-              onClick={() => void handleImport()}
-            >
-              {isImporting ? <LoaderCircleIcon className="animate-spin" /> : <ImportIcon />}
-              {isImporting
-                ? "Importing…"
-                : `Import ${selectedIds.size || ""} chat${selectedIds.size === 1 ? "" : "s"}`}
-            </Button>
+            <ExternalChatImportActionButton
+              selectedCount={selectedIds.size}
+              hasUnresolvedCandidates={unresolvedIds.size > 0}
+              hasEnvironment={environmentId !== null}
+              isRefreshing={isRefreshing}
+              isImporting={isImporting}
+              onImport={() => void handleImport()}
+            />
           </div>
         </DialogFooter>
       </DialogPopup>
-    </Dialog>
+    </ExternalChatImportDialogFrame>
   );
 }
 
