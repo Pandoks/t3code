@@ -216,6 +216,7 @@ import {
   type SidebarProjectGroupMember,
   type SidebarProjectSnapshot,
 } from "../sidebarProjectGrouping";
+import { ExternalChatImportSidebarAction } from "./ExternalChatImportDialog";
 const SIDEBAR_SORT_LABELS: Record<SidebarProjectSortOrder, string> = {
   updated_at: "Last user message",
   created_at: "Created at",
@@ -2948,6 +2949,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
               onProjectGroupingModeChange={handleProjectGroupingModeChange}
               onThreadPreviewCountChange={handleThreadPreviewCountChange}
             />
+            <ExternalChatImportSidebarAction tooltipSide="right" />
             <Tooltip>
               <TooltipTrigger
                 render={
