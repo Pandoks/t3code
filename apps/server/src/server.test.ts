@@ -52,6 +52,7 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
+import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import { ChildProcessSpawner } from "effect/unstable/process";
@@ -83,6 +84,7 @@ import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSna
 import { SqlitePersistenceMemory } from "./persistence/Layers/Sqlite.ts";
 import { PersistenceSqlError } from "./persistence/Errors.ts";
 import * as ProviderRegistry from "./provider/Services/ProviderRegistry.ts";
+import * as ProviderUsageRegistry from "./provider/Services/ProviderUsageRegistry.ts";
 import { makeManualOnlyProviderMaintenanceCapabilities } from "./provider/providerMaintenance.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
@@ -322,6 +324,7 @@ const buildAppUnderTest = (options?: {
   layers?: {
     keybindings?: Partial<Keybindings.Keybindings["Service"]>;
     providerRegistry?: Partial<ProviderRegistry.ProviderRegistry["Service"]>;
+    providerUsageRegistry?: Partial<ProviderUsageRegistry.ProviderUsageRegistry["Service"]>;
     serverSettings?: Partial<ServerSettings.ServerSettingsService["Service"]>;
     externalLauncher?: Partial<ExternalLauncher.ExternalLauncher["Service"]>;
     vcsDriver?: Partial<VcsDriver.VcsDriver["Service"]>;
@@ -540,18 +543,27 @@ const buildAppUnderTest = (options?: {
         }),
       ),
       Layer.provide(
-        Layer.mock(ProviderRegistry.ProviderRegistry)({
-          getProviders: Effect.succeed([]),
-          refresh: () => Effect.succeed([]),
-          refreshInstance: () => Effect.succeed([]),
-          getProviderMaintenanceCapabilitiesForInstance: (_instanceId, provider) =>
-            Effect.succeed(
-              makeManualOnlyProviderMaintenanceCapabilities({ provider, packageName: null }),
-            ),
-          setProviderMaintenanceActionState: () => Effect.succeed([]),
-          streamChanges: Stream.empty,
-          ...options?.layers?.providerRegistry,
-        }),
+        Layer.mergeAll(
+          Layer.mock(ProviderRegistry.ProviderRegistry)({
+            getProviders: Effect.succeed([]),
+            refresh: () => Effect.succeed([]),
+            refreshInstance: () => Effect.succeed([]),
+            getProviderMaintenanceCapabilitiesForInstance: (_instanceId, provider) =>
+              Effect.succeed(
+                makeManualOnlyProviderMaintenanceCapabilities({ provider, packageName: null }),
+              ),
+            setProviderMaintenanceActionState: () => Effect.succeed([]),
+            streamChanges: Stream.empty,
+            ...options?.layers?.providerRegistry,
+          }),
+          Layer.mock(ProviderUsageRegistry.ProviderUsageRegistry)({
+            getSnapshotList: Effect.succeed({ snapshots: [] }),
+            refresh: () => Effect.succeed({ snapshots: [] }),
+            refreshInstance: () => Effect.succeed({ snapshots: [] }),
+            streamChanges: Stream.succeed({ snapshots: [] }),
+            ...options?.layers?.providerUsageRegistry,
+          }),
+        ),
       ),
       Layer.provide(
         Layer.mock(ServerSettings.ServerSettingsService)({
@@ -4334,6 +4346,60 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         type: "providerStatuses",
         payload: { providers: nextProviders },
       });
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("routes provider usage subscription and targeted refresh", () =>
+    Effect.gen(function* () {
+      const refreshed = {
+        snapshots: [
+          {
+            instanceId: ProviderInstanceId.make("codex"),
+            driver: ProviderDriverKind.make("codex"),
+            displayName: "Codex",
+            status: "ready" as const,
+            checkedAt: "2026-07-22T12:00:00.000Z",
+            lastSuccessfulAt: "2026-07-22T12:00:00.000Z",
+            headlineWindowId: "weekly",
+            windows: [
+              {
+                id: "weekly",
+                label: "Weekly",
+                usedPercent: 25,
+                remainingPercent: 75,
+                resetsAt: "2026-07-25T12:00:00.000Z",
+                windowDurationMinutes: 10_080,
+              },
+            ],
+          },
+        ],
+      };
+      const refreshInput = yield* Ref.make<ProviderInstanceId | undefined>(undefined);
+
+      yield* buildAppUnderTest({
+        layers: {
+          providerUsageRegistry: {
+            streamChanges: Stream.fromIterable([{ snapshots: [] }, refreshed]),
+            refresh: (input) => Ref.set(refreshInput, input?.instanceId).pipe(Effect.as(refreshed)),
+          },
+        },
+      });
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const [events, refreshResult] = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          Effect.all([
+            client[WS_METHODS.subscribeProviderUsage]({}).pipe(Stream.take(2), Stream.runCollect),
+            client[WS_METHODS.providerUsageRefresh]({
+              instanceId: ProviderInstanceId.make("codex"),
+            }),
+          ]),
+        ),
+      );
+
+      assert.deepEqual(Array.from(events), [{ snapshots: [] }, refreshed]);
+      assert.deepEqual(refreshResult, refreshed);
+      assert.equal(yield* Ref.get(refreshInput), ProviderInstanceId.make("codex"));
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
