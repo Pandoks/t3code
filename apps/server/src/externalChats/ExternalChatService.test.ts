@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off
 import {
   ExternalChatCandidateId,
   ProjectId,
@@ -5,6 +6,9 @@ import {
   ProviderInstanceId,
   type OrchestrationCommand,
 } from "@t3tools/contracts";
+import * as NodeFSP from "node:fs/promises";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -12,14 +16,9 @@ import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 
 import { ExternalChatImportRepository } from "../persistence/ExternalChatImports.ts";
-import { ExternalChatImportRepositoryLive } from "../persistence/Layers/ExternalChatImports.ts";
-import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
+import type { ExternalChatImportProvenance } from "../persistence/ExternalChatImports.ts";
 import { ProjectionProjectRepository } from "../persistence/Services/ProjectionProjects.ts";
 import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
-import {
-  ProviderSessionDirectory,
-  type ProviderRuntimeBinding,
-} from "../provider/Services/ProviderSessionDirectory.ts";
 import { layerTest as serverSettingsLayerTest, ServerSettingsService } from "../serverSettings.ts";
 import {
   ExternalChatService,
@@ -30,7 +29,7 @@ import {
 const codexFixtureHome = new URL("./__fixtures__/codex", import.meta.url).pathname;
 const claudeFixtureHome = new URL("./__fixtures__/claude", import.meta.url).pathname;
 const commands: Array<OrchestrationCommand> = [];
-const bindings: Array<ProviderRuntimeBinding> = [];
+const provenanceRows: Array<ExternalChatImportProvenance> = [];
 let failNextHistoricalDispatch = false;
 
 const projects = [
@@ -82,9 +81,40 @@ const projects = [
   },
 ] as const;
 
-const provenanceLayer = ExternalChatImportRepositoryLive.pipe(
-  Layer.provide(SqlitePersistenceMemory),
-);
+const provenanceLayer = Layer.succeed(ExternalChatImportRepository, {
+  upsert: (row) =>
+    Effect.sync(() => {
+      const index = provenanceRows.findIndex(
+        (existing) =>
+          existing.source === row.source &&
+          existing.providerInstanceId === row.providerInstanceId &&
+          existing.nativeSessionId === row.nativeSessionId,
+      );
+      if (index === -1) provenanceRows.push(row);
+      else provenanceRows[index] = row;
+    }),
+  getByNativeIdentity: (identity) =>
+    Effect.succeed(
+      Option.fromNullishOr(
+        provenanceRows.find(
+          (row) =>
+            row.source === identity.source &&
+            row.providerInstanceId === identity.providerInstanceId &&
+            row.nativeSessionId === identity.nativeSessionId,
+        ),
+      ),
+    ),
+  getByCandidateId: (candidateId) =>
+    Effect.succeed(
+      Option.fromNullishOr(provenanceRows.find((row) => row.candidateId === candidateId)),
+    ),
+  list: () => Effect.succeed(provenanceRows),
+  deleteByThreadId: ({ threadId }) =>
+    Effect.sync(() => {
+      const index = provenanceRows.findIndex((row) => row.threadId === threadId);
+      if (index !== -1) provenanceRows.splice(index, 1);
+    }),
+});
 const settingsLayer = serverSettingsLayerTest({
   providerInstances: {
     [ProviderInstanceId.make("codex_work")]: {
@@ -112,22 +142,41 @@ const serviceDependencies = Layer.mergeAll(
     dispatch: (command) =>
       Effect.suspend(() => {
         commands.push(command);
-        if (failNextHistoricalDispatch && command.type === "thread.message.history.append") {
+        if (failNextHistoricalDispatch && String(command.type) === "thread.external-chat.import") {
           failNextHistoricalDispatch = false;
           return Effect.die("injected historical dispatch failure");
+        }
+        if (String(command.type) === "thread.external-chat.import") {
+          const imported = command as Extract<
+            OrchestrationCommand,
+            { readonly type: "thread.external-chat.import" }
+          >;
+          const metadata = imported.externalChat;
+          const index = provenanceRows.findIndex(
+            (row) =>
+              row.source === metadata.source &&
+              row.providerInstanceId === metadata.providerInstanceId &&
+              row.nativeSessionId === metadata.nativeSessionId,
+          );
+          const row: ExternalChatImportProvenance = {
+            source: metadata.source,
+            providerInstanceId: metadata.providerInstanceId,
+            nativeSessionId: metadata.nativeSessionId,
+            candidateId: metadata.candidateId,
+            threadId: imported.threadId,
+            sourceFingerprint: metadata.sourceFingerprint,
+            importedAt: metadata.importedAt,
+            schemaVersion: metadata.schemaVersion,
+            candidateSnapshot: metadata.candidateSnapshot,
+          };
+          if (index === -1) provenanceRows.push(row);
+          else provenanceRows[index] = row;
         }
         return Effect.succeed({ sequence: commands.length });
       }),
     readEvents: () => Stream.empty,
     streamDomainEvents: Stream.empty,
     latestSequence: Effect.succeed(0),
-  }),
-  Layer.succeed(ProviderSessionDirectory, {
-    upsert: (binding) => Effect.sync(() => bindings.push(binding)).pipe(Effect.asVoid),
-    getProvider: () => Effect.die("unused"),
-    getBinding: () => Effect.succeed(Option.none()),
-    listThreadIds: () => Effect.succeed([]),
-    listBindings: () => Effect.succeed([]),
   }),
   settingsLayer,
 );
@@ -161,7 +210,6 @@ it.layer(testLayer)("ExternalChatService", (it) => {
   it.effect("imports in source order, persists a strict resume cursor, and is idempotent", () =>
     Effect.gen(function* () {
       commands.length = 0;
-      bindings.length = 0;
       const service = yield* ExternalChatService;
       const listed = yield* service.refresh({ sources: ["codex"] });
       const candidate = listed.candidates[0];
@@ -176,25 +224,19 @@ it.layer(testLayer)("ExternalChatService", (it) => {
         threadId: first.results[0]?.threadId,
       });
       expect(second.results[0]?.resumability).toEqual(first.results[0]?.resumability);
-      expect(commands.filter((command) => command.type === "thread.create")).toHaveLength(1);
-      expect(
-        commands
-          .filter((command) => command.type === "thread.message.history.append")
-          .map((command) =>
-            command.type === "thread.message.history.append" ? command.createdAt : "",
-          ),
-      ).toEqual(
-        [...commands]
-          .filter((command) => command.type === "thread.message.history.append")
-          .map((command) =>
-            command.type === "thread.message.history.append" ? command.createdAt : "",
-          )
-          .sort(),
+      const [importCommand] = commands.filter(
+        (command) => String(command.type) === "thread.external-chat.import",
+      ) as unknown as ReadonlyArray<{
+        readonly history: ReadonlyArray<{ readonly createdAt: string }>;
+        readonly externalChat: { readonly resumeCursor: unknown };
+      }>;
+      expect(importCommand).toBeDefined();
+      expect(importCommand?.history.map((record) => record.createdAt)).toEqual(
+        importCommand?.history.map((record) => record.createdAt).toSorted(),
       );
-      expect(bindings[0]).toMatchObject({
-        providerInstanceId: "codex_work",
-        status: "stopped",
-        resumeCursor: { threadId: "codex-session-alpha", strictResume: true },
+      expect(importCommand?.externalChat.resumeCursor).toEqual({
+        threadId: "codex-session-alpha",
+        strictResume: true,
       });
     }),
   );
@@ -231,14 +273,16 @@ it.layer(testLayer)("ExternalChatService", (it) => {
         failNextHistoricalDispatch = true;
         const failed = yield* service.import({ candidateIds: [candidate.candidateId] });
         expect(failed.results[0]?.status).toBe("failed");
-        expect(commands.at(-1)?.type).toBe("thread.delete");
         expect(Option.isNone(yield* provenance.getByCandidateId(candidate.candidateId))).toBe(true);
 
         const imported = yield* service.import({ candidateIds: [candidate.candidateId] });
         expect(imported.results[0]?.status).toBe("imported");
-        expect(bindings.at(-1)).toMatchObject({
-          providerInstanceId: "claude_work",
-          resumeCursor: { sessionId: "claude-session-beta" },
+        const importCommand = commands.findLast(
+          (command) => String(command.type) === "thread.external-chat.import",
+        ) as unknown as { readonly externalChat: { readonly resumeCursor: unknown } };
+        expect(importCommand.externalChat.resumeCursor).toEqual({
+          resume: "claude-session-beta",
+          resumeSessionAt: "assistant-3",
         });
 
         yield* settings.updateSettings({
@@ -262,5 +306,99 @@ it.layer(testLayer)("ExternalChatService", (it) => {
           },
         });
       }),
+  );
+
+  it.effect("scopes historical identities by provider instance", () =>
+    Effect.gen(function* () {
+      commands.length = 0;
+      const service = yield* ExternalChatService;
+      const settings = yield* ServerSettingsService;
+      yield* settings.updateSettings({
+        providerInstances: {
+          [ProviderInstanceId.make("codex_isolated_a")]: {
+            driver: ProviderDriverKind.make("codex"),
+            config: { homePath: codexFixtureHome },
+          },
+          [ProviderInstanceId.make("codex_isolated_b")]: {
+            driver: ProviderDriverKind.make("codex"),
+            config: { homePath: codexFixtureHome },
+          },
+        },
+      });
+      const listed = yield* service.refresh({ sources: ["codex"] });
+      const isolatedCandidates = listed.candidates.filter((candidate) =>
+        candidate.providerInstanceId.startsWith("codex_isolated_"),
+      );
+      expect(isolatedCandidates).toHaveLength(2);
+      const imported = yield* service.import({
+        candidateIds: isolatedCandidates.map((candidate) => candidate.candidateId),
+      });
+      expect(imported.results.map((result) => result.status)).toEqual(["imported", "imported"]);
+
+      const importCommands = commands.filter(
+        (command) => String(command.type) === "thread.external-chat.import",
+      ) as unknown as ReadonlyArray<{
+        readonly history: ReadonlyArray<{
+          readonly eventId: string;
+          readonly messageId?: string;
+          readonly activity?: { readonly id: string };
+        }>;
+      }>;
+      expect(importCommands).toHaveLength(2);
+      const identities = importCommands.map((command) =>
+        command.history.flatMap((record) => [
+          record.eventId,
+          ...(record.messageId ? [record.messageId] : []),
+          ...(record.activity ? [record.activity.id] : []),
+        ]),
+      );
+      expect(identities[0]?.some((identity) => identities[1]?.includes(identity))).toBe(false);
+    }),
+  );
+
+  it.effect("returns a per-item failure when one cached source disappears", () =>
+    Effect.acquireUseRelease(
+      Effect.tryPromise(() => NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "t3-import-batch-"))),
+      (temporaryRoot) =>
+        Effect.gen(function* () {
+          const codexHome = NodePath.join(temporaryRoot, "codex");
+          const claudeHome = NodePath.join(temporaryRoot, "claude");
+          yield* Effect.tryPromise(() =>
+            NodeFSP.cp(codexFixtureHome, codexHome, { recursive: true }),
+          );
+          yield* Effect.tryPromise(() =>
+            NodeFSP.cp(claudeFixtureHome, claudeHome, { recursive: true }),
+          );
+          const settings = yield* ServerSettingsService;
+          yield* settings.updateSettings({
+            providerInstances: {
+              [ProviderInstanceId.make("codex_batch")]: {
+                driver: ProviderDriverKind.make("codex"),
+                config: { homePath: codexHome },
+              },
+              [ProviderInstanceId.make("claude_batch")]: {
+                driver: ProviderDriverKind.make("claudeAgent"),
+                config: { homePath: claudeHome },
+              },
+            },
+          });
+          const service = yield* ExternalChatService;
+          const listed = yield* service.refresh({});
+          const codex = listed.candidates.find((candidate) => candidate.source === "codex");
+          const claude = listed.candidates.find((candidate) => candidate.source === "claude");
+          if (!codex || !claude) return yield* Effect.die("expected copied candidates");
+          yield* Effect.tryPromise(() =>
+            NodeFSP.unlink(
+              NodePath.join(codexHome, "sessions", "2026", "07", "20", "rollout-alpha.jsonl"),
+            ),
+          );
+
+          const result = yield* service.import({
+            candidateIds: [codex.candidateId, claude.candidateId],
+          });
+          expect(result.results.map((item) => item.status)).toEqual(["failed", "imported"]);
+        }),
+      (temporaryRoot) => Effect.promise(() => NodeFSP.rm(temporaryRoot, { recursive: true })),
+    ),
   );
 });

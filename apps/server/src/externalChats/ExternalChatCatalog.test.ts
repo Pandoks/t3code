@@ -1,7 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off
-import * as NodeFS from "node:fs/promises";
-import { fileURLToPath } from "node:url";
-import { inspect } from "node:util";
+import * as NodeFSP from "node:fs/promises";
+import * as NodeURL from "node:url";
+import * as NodeUtil from "node:util";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { ProviderInstanceId } from "@t3tools/contracts";
@@ -14,9 +14,9 @@ import {
   scanExternalChats,
 } from "./ExternalChatCatalog.ts";
 
-const fixturesRoot = fileURLToPath(new URL("./__fixtures__", import.meta.url));
-const codexHomeRoot = fileURLToPath(new URL("./__fixtures__/codex", import.meta.url));
-const claudeHomeRoot = fileURLToPath(new URL("./__fixtures__/claude", import.meta.url));
+const fixturesRoot = NodeURL.fileURLToPath(new URL("./__fixtures__", import.meta.url));
+const codexHomeRoot = NodeURL.fileURLToPath(new URL("./__fixtures__/codex", import.meta.url));
+const claudeHomeRoot = NodeURL.fileURLToPath(new URL("./__fixtures__/claude", import.meta.url));
 
 describe("external native chat catalog", () => {
   it.effect("discovers Codex metadata and normalized events in chronological order", () =>
@@ -123,7 +123,7 @@ describe("external native chat catalog", () => {
         expect.objectContaining({ kind: "unknown", line: 24, recordType: "future_native_record" }),
       ]);
 
-      const visible = inspect({ candidate: session?.candidate, events: session?.events });
+      const visible = NodeUtil.inspect({ candidate: session?.candidate, events: session?.events });
       expect(visible).not.toContain("HIDDEN_SYSTEM_PROMPT");
       expect(visible).not.toContain("HIDDEN_DEVELOPER_PROMPT");
       expect(visible).not.toContain("SUPER_SECRET_TOKEN");
@@ -151,6 +151,7 @@ describe("external native chat catalog", () => {
         messageCount: 5,
         resumability: { status: "resumable" },
       });
+      expect(session).toMatchObject({ lastAssistantUuid: "assistant-3" });
       expect(session?.events.map((event) => event.type)).toEqual([
         "message",
         "message",
@@ -198,7 +199,7 @@ describe("external native chat catalog", () => {
         expect.objectContaining({ kind: "unknown", line: 13, recordType: "future-claude-record" }),
       ]);
 
-      const visible = inspect({ candidate: session?.candidate, events: session?.events });
+      const visible = NodeUtil.inspect({ candidate: session?.candidate, events: session?.events });
       expect(visible).not.toContain("HIDDEN_SYSTEM_CONTEXT");
       expect(visible).not.toContain("ANTHROPIC_API_KEY");
       expect(visible).not.toContain("HIDDEN_QUEUE_BOOKKEEPING");
@@ -251,7 +252,7 @@ describe("external native chat catalog", () => {
     () =>
       Effect.gen(function* () {
         const before = yield* Effect.promise(() =>
-          NodeFS.readFile(fixturesRoot + "/codex/sessions/2026/07/20/rollout-alpha.jsonl", "utf8"),
+          NodeFSP.readFile(fixturesRoot + "/codex/sessions/2026/07/20/rollout-alpha.jsonl", "utf8"),
         );
         const sessions = yield* scanExternalChats({
           sources: [
@@ -268,7 +269,7 @@ describe("external native chat catalog", () => {
           ],
         });
         const after = yield* Effect.promise(() =>
-          NodeFS.readFile(fixturesRoot + "/codex/sessions/2026/07/20/rollout-alpha.jsonl", "utf8"),
+          NodeFSP.readFile(fixturesRoot + "/codex/sessions/2026/07/20/rollout-alpha.jsonl", "utf8"),
         );
 
         expect(sessions.map((session) => session.candidate.source)).toEqual(["claude", "codex"]);

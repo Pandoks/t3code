@@ -1,6 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off
-import { createHash } from "node:crypto";
-import * as NodeFS from "node:fs/promises";
+import * as NodeCrypto from "node:crypto";
+import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 
 import {
@@ -26,6 +26,7 @@ export interface NativeExternalChat {
   readonly sourceFile: string;
   readonly events: ReadonlyArray<NormalizedHistoricalEvent>;
   readonly diagnostics: ReadonlyArray<ExternalChatDiagnostic>;
+  readonly lastAssistantUuid?: string;
 }
 
 export interface ExternalChatScannerInput {
@@ -74,6 +75,7 @@ interface ParsedTranscript {
   readonly timestamps: ReadonlyArray<string>;
   readonly hasNativeMetadata: boolean;
   readonly isSidechain: boolean;
+  readonly lastAssistantUuid?: string;
 }
 
 type NativeToolCall =
@@ -135,7 +137,7 @@ const makeCandidateId = (
   nativeSessionId: string,
 ) =>
   ExternalChatCandidateId.make(
-    `extchat_v1_${createHash("sha256")
+    `extchat_v1_${NodeCrypto.createHash("sha256")
       .update(`${source}\0${providerInstanceId}\0${nativeSessionId}`)
       .digest("hex")}`,
   );
@@ -603,6 +605,7 @@ const parseClaudeTranscript = (contents: string, sourceFile: string): ParsedTran
   let title: string | undefined;
   let hasNativeMetadata = false;
   let isSidechain = false;
+  let lastAssistantUuid: string | undefined;
 
   for (const line of parsed.lines) {
     if (line.timestamp) timestamps.push(line.timestamp);
@@ -633,6 +636,7 @@ const parseClaudeTranscript = (contents: string, sourceFile: string): ParsedTran
           textFromContent(content),
         );
       } else {
+        lastAssistantUuid = asString(line.record.uuid) ?? lastAssistantUuid;
         pushMessage(
           events,
           seenMessages,
@@ -779,6 +783,7 @@ const parseClaudeTranscript = (contents: string, sourceFile: string): ParsedTran
     timestamps,
     hasNativeMetadata,
     isSidechain,
+    ...(lastAssistantUuid ? { lastAssistantUuid } : {}),
   };
 };
 
@@ -810,7 +815,7 @@ const discoverJsonlFiles = Effect.fn("ExternalChatCatalog.discoverJsonlFiles")(f
   return yield* Effect.tryPromise({
     try: async () => {
       try {
-        const entries = await NodeFS.readdir(searchRoot, { recursive: true, withFileTypes: true });
+        const entries = await NodeFSP.readdir(searchRoot, { recursive: true, withFileTypes: true });
         return entries
           .filter((entry) => entry.isFile() && entry.name.endsWith(".jsonl"))
           .map((entry) => NodePath.join(entry.parentPath, entry.name))
@@ -840,8 +845,8 @@ const scanSource = Effect.fn("ExternalChatCatalog.scanSource")(function* (
   for (const sourceFile of files) {
     const { contents, stat } = yield* Effect.tryPromise({
       try: async () => ({
-        contents: await NodeFS.readFile(sourceFile, "utf8"),
-        stat: await NodeFS.stat(sourceFile),
+        contents: await NodeFSP.readFile(sourceFile, "utf8"),
+        stat: await NodeFSP.stat(sourceFile),
       }),
       catch: (cause) => new ExternalChatScanError({ source, homeRoot: input.homeRoot, cause }),
     });
@@ -884,6 +889,7 @@ const scanSource = Effect.fn("ExternalChatCatalog.scanSource")(function* (
       sourceFile,
       events: parsed.events,
       diagnostics: parsed.diagnostics,
+      ...(parsed.lastAssistantUuid ? { lastAssistantUuid: parsed.lastAssistantUuid } : {}),
     });
   }
   return sessions.sort((left, right) =>

@@ -37,7 +37,6 @@ import { ExternalChatImportRepository } from "../persistence/ExternalChatImports
 import type { ProjectionProject } from "../persistence/Services/ProjectionProjects.ts";
 import { ProjectionProjectRepository } from "../persistence/Services/ProjectionProjects.ts";
 import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
-import { ProviderSessionDirectory } from "../provider/Services/ProviderSessionDirectory.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import {
   scanExternalChats,
@@ -248,7 +247,6 @@ const make = Effect.gen(function* () {
   const imports = yield* ExternalChatImportRepository;
   const projects = yield* ProjectionProjectRepository;
   const engine = yield* OrchestrationEngineService;
-  const directory = yield* ProviderSessionDirectory;
   const settings = yield* ServerSettingsService;
   const cache = yield* Ref.make(new Map<string, NativeExternalChat>());
 
@@ -378,25 +376,61 @@ const make = Effect.gen(function* () {
         candidate.nativeSessionId,
       ),
     );
-    const fingerprint = yield* Effect.tryPromise({
-      try: () => NodeFSP.readFile(native.sourceFile),
-      catch: () =>
-        new ExternalChatRpcError({
-          operation: "externalChats.import.readSource",
-          message: "Native source is no longer available.",
-        }),
-    }).pipe(
-      Effect.map(
-        (contents) => `sha256:${NodeCrypto.createHash("sha256").update(contents).digest("hex")}`,
-      ),
-    );
-    let created = false;
-    const dispatch = (command: OrchestrationCommand) => engine.dispatch(command);
-
     const runImport = Effect.gen(function* () {
-      yield* dispatch({
-        type: "thread.create",
-        commandId: CommandId.make(stableId("external-command", candidateId, "thread")),
+      const fingerprint = yield* Effect.tryPromise({
+        try: () => NodeFSP.readFile(native.sourceFile),
+        catch: () =>
+          new ExternalChatRpcError({
+            operation: "externalChats.import.readSource",
+            message: "Native source is no longer available.",
+          }),
+      }).pipe(
+        Effect.map(
+          (contents) => `sha256:${NodeCrypto.createHash("sha256").update(contents).digest("hex")}`,
+        ),
+      );
+      const importedAt = DateTime.formatIso(yield* DateTime.now);
+      const resumeCursor =
+        candidate.source === "codex"
+          ? { threadId: candidate.nativeSessionId, strictResume: true }
+          : {
+              resume: candidate.nativeSessionId,
+              ...(native.lastAssistantUuid ? { resumeSessionAt: native.lastAssistantUuid } : {}),
+            };
+      const identityScope = [
+        candidate.source,
+        candidate.providerInstanceId,
+        candidate.nativeSessionId,
+      ] as const;
+      const history = native.events.map((event, index) => {
+        const recordIdentity = String(index);
+        const createdAt = event.timestamp ?? candidate.createdAt;
+        const eventId = EventId.make(stableId("external-event", ...identityScope, recordIdentity));
+        return event.type === "message"
+          ? {
+              type: "message" as const,
+              eventId,
+              messageId: MessageId.make(
+                stableId("external-message", ...identityScope, recordIdentity),
+              ),
+              role: event.role,
+              text: event.text,
+              createdAt,
+            }
+          : {
+              type: "activity" as const,
+              eventId,
+              activity: activityFromHistoricalEvent(
+                event,
+                createdAt,
+                stableId("external-activity", ...identityScope, recordIdentity),
+              ),
+              createdAt,
+            };
+      });
+      const command: OrchestrationCommand = {
+        type: "thread.external-chat.import",
+        commandId: CommandId.make(stableId("external-command", ...identityScope, "import")),
         threadId,
         projectId: project.projectId,
         title: candidate.title,
@@ -409,67 +443,9 @@ const make = Effect.gen(function* () {
             ? candidate.cwd
             : null,
         createdAt: candidate.createdAt,
-      });
-      created = true;
-
-      for (const [index, event] of native.events.entries()) {
-        const createdAt = event.timestamp ?? candidate.createdAt;
-        if (event.type === "message") {
-          yield* dispatch({
-            type: "thread.message.history.append",
-            commandId: CommandId.make(stableId("external-command", candidateId, String(index))),
-            threadId,
-            messageId: MessageId.make(
-              stableId("external-message", candidate.nativeSessionId, String(index)),
-            ),
-            role: event.role,
-            text: event.text,
-            createdAt,
-          });
-        } else {
-          yield* dispatch({
-            type: "thread.activity.append",
-            commandId: CommandId.make(stableId("external-command", candidateId, String(index))),
-            threadId,
-            activity: activityFromHistoricalEvent(
-              event,
-              createdAt,
-              stableId("external-activity", candidate.nativeSessionId, String(index)),
-            ),
-            createdAt,
-          });
-        }
-      }
-
-      const importedAt = DateTime.formatIso(yield* DateTime.now);
-      const resumeCursor =
-        candidate.source === "codex"
-          ? { threadId: candidate.nativeSessionId, strictResume: true }
-          : { sessionId: candidate.nativeSessionId };
-      yield* directory.upsert({
-        threadId,
-        provider: driver,
-        providerInstanceId: candidate.providerInstanceId,
-        adapterKey: driver,
-        runtimeMode: "full-access",
-        status: "stopped",
-        resumeCursor,
-        runtimePayload: {
-          cwd: candidate.cwd ?? null,
-          modelSelection,
-          externalChat: {
-            source: candidate.source,
-            sourceFile: native.sourceFile,
-            sourceFingerprint: fingerprint,
-            importedAt,
-            schemaVersion: IMPORT_SCHEMA_VERSION,
-          },
-        },
-      });
-      yield* dispatch({
-        type: "thread.session.set",
-        commandId: CommandId.make(stableId("external-command", candidateId, "session")),
-        threadId,
+        createEventId: EventId.make(stableId("external-event", ...identityScope, "thread")),
+        history,
+        sessionEventId: EventId.make(stableId("external-event", ...identityScope, "session")),
         session: {
           threadId,
           status: "stopped",
@@ -480,19 +456,23 @@ const make = Effect.gen(function* () {
           lastError: null,
           updatedAt: importedAt,
         },
-        createdAt: importedAt,
-      });
-      yield* imports.upsert({
-        source: candidate.source,
-        providerInstanceId: candidate.providerInstanceId,
-        nativeSessionId: candidate.nativeSessionId,
-        candidateId,
-        threadId,
-        sourceFingerprint: fingerprint,
-        importedAt,
-        schemaVersion: IMPORT_SCHEMA_VERSION,
-        candidateSnapshot: candidate,
-      });
+        externalChat: {
+          source: candidate.source,
+          providerInstanceId: candidate.providerInstanceId,
+          nativeSessionId: candidate.nativeSessionId,
+          candidateId,
+          sourceFingerprint: fingerprint,
+          importedAt,
+          schemaVersion: IMPORT_SCHEMA_VERSION,
+          candidateSnapshot: candidate,
+          sourceFile: native.sourceFile,
+          cwd: candidate.cwd ?? null,
+          modelSelection,
+          runtimeMode: "full-access",
+          resumeCursor,
+        },
+      };
+      yield* engine.dispatch(command);
       return {
         candidateId,
         threadId,
@@ -503,21 +483,11 @@ const make = Effect.gen(function* () {
 
     return yield* runImport.pipe(
       Effect.catchCause((cause) =>
-        Effect.gen(function* () {
-          if (created) {
-            yield* dispatch({
-              type: "thread.delete",
-              commandId: CommandId.make(stableId("external-command", candidateId, "rollback")),
-              threadId,
-            }).pipe(Effect.ignoreCause({ log: true }));
-          }
-          yield* imports.deleteByThreadId({ threadId }).pipe(Effect.ignoreCause({ log: true }));
-          return {
-            candidateId,
-            status: "failed" as const,
-            resumability: candidate.resumability,
-            error: Cause.pretty(cause),
-          };
+        Effect.succeed({
+          candidateId,
+          status: "failed" as const,
+          resumability: candidate.resumability,
+          error: Cause.pretty(cause),
         }),
       ),
     );

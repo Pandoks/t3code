@@ -8,6 +8,10 @@ import {
   TurnId,
   type OrchestrationEvent,
   ProviderInstanceId,
+  ExternalChatCandidateId,
+  ExternalChatNativeSessionId,
+  EventId,
+  type OrchestrationCommand,
 } from "@t3tools/contracts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Effect from "effect/Effect";
@@ -17,9 +21,15 @@ import * as Metric from "effect/Metric";
 import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
 import { describe, expect, it } from "vite-plus/test";
 
 import { PersistenceSqlError } from "../../persistence/Errors.ts";
+import { ExternalChatImportRepositoryLive } from "../../persistence/Layers/ExternalChatImports.ts";
+import { ExternalChatImportRepository } from "../../persistence/ExternalChatImports.ts";
+import * as ProviderSessionRuntime from "../../persistence/ProviderSessionRuntime.ts";
+import { ProviderSessionDirectoryLive } from "../../provider/Layers/ProviderSessionDirectory.ts";
+import { ProviderSessionDirectory } from "../../provider/Services/ProviderSessionDirectory.ts";
 import { OrchestrationCommandReceiptRepositoryLive } from "../../persistence/Layers/OrchestrationCommandReceipts.ts";
 import { OrchestrationEventStoreLive } from "../../persistence/Layers/OrchestrationEventStore.ts";
 import { SqlitePersistenceMemory } from "../../persistence/Layers/Sqlite.ts";
@@ -54,21 +64,46 @@ async function createOrchestrationSystem() {
       Layer.provide(OrchestrationProjectionPipelineLive),
     ),
     OrchestrationProjectionSnapshotQueryLive,
+    ExternalChatImportRepositoryLive,
+    ProviderSessionDirectoryLive.pipe(Layer.provide(ProviderSessionRuntime.layer)),
   ).pipe(
     Layer.provide(OrchestrationEventStoreLive),
     Layer.provide(OrchestrationCommandReceiptRepositoryLive),
     Layer.provide(RepositoryIdentityResolver.layer),
-    Layer.provide(SqlitePersistenceMemory),
+    Layer.provideMerge(SqlitePersistenceMemory),
     Layer.provideMerge(ServerConfigLayer),
     Layer.provideMerge(NodeServices.layer),
   );
   const runtime = ManagedRuntime.make(orchestrationLayer);
   const engine = await runtime.runPromise(Effect.service(OrchestrationEngineService));
   const snapshotQuery = await runtime.runPromise(Effect.service(ProjectionSnapshotQuery));
+  const imports = await runtime.runPromise(Effect.service(ExternalChatImportRepository));
+  const directory = await runtime.runPromise(Effect.service(ProviderSessionDirectory));
   return {
     engine,
     readModel: () => runtime.runPromise(snapshotQuery.getSnapshot()),
     run: <A, E>(effect: Effect.Effect<A, E>) => runtime.runPromise(effect),
+    imports,
+    directory,
+    countImportResidue: (threadId: ThreadId, commandId: CommandId) =>
+      runtime.runPromise(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          const rows = yield* sql<{ readonly count: number }>`
+            SELECT (
+              (SELECT COUNT(*) FROM orchestration_events WHERE stream_id = ${threadId}) +
+              (SELECT COUNT(*) FROM orchestration_command_receipts WHERE command_id = ${commandId}) +
+              (SELECT COUNT(*) FROM projection_threads WHERE thread_id = ${threadId}) +
+              (SELECT COUNT(*) FROM projection_thread_messages WHERE thread_id = ${threadId}) +
+              (SELECT COUNT(*) FROM projection_thread_activities WHERE thread_id = ${threadId}) +
+              (SELECT COUNT(*) FROM projection_thread_sessions WHERE thread_id = ${threadId}) +
+              (SELECT COUNT(*) FROM provider_session_runtime WHERE thread_id = ${threadId}) +
+              (SELECT COUNT(*) FROM external_chat_imports WHERE thread_id = ${threadId})
+            ) AS count
+          `;
+          return rows[0]?.count ?? -1;
+        }),
+      ),
     dispose: () => runtime.dispose(),
   };
 }
@@ -985,6 +1020,138 @@ describe("OrchestrationEngine", () => {
     ).toHaveLength(2);
 
     await runtime.dispose();
+  });
+
+  it("atomically rolls back an external import and permits the same command to retry", async () => {
+    const system = await createOrchestrationSystem();
+    const createdAt = now();
+    const projectId = asProjectId("project-external-atomic");
+    const threadId = ThreadId.make("thread-external-atomic");
+    const commandId = CommandId.make("cmd-external-atomic");
+    const candidateId = ExternalChatCandidateId.make("candidate-external-atomic");
+
+    await system.run(
+      system.engine.dispatch({
+        type: "project.create",
+        commandId: CommandId.make("cmd-project-external-atomic"),
+        projectId,
+        title: "External atomic",
+        workspaceRoot: "/workspace/external-atomic",
+        defaultModelSelection: null,
+        createdAt,
+      }),
+    );
+    await system.run(
+      system.imports.upsert({
+        source: "codex",
+        providerInstanceId: ProviderInstanceId.make("seed-instance"),
+        nativeSessionId: ExternalChatNativeSessionId.make("seed-session"),
+        candidateId,
+        threadId: ThreadId.make("seed-thread"),
+        sourceFingerprint: "sha256:seed",
+        importedAt: createdAt,
+        schemaVersion: 1,
+        candidateSnapshot: null,
+      }),
+    );
+
+    const importCommand = {
+      type: "thread.external-chat.import",
+      commandId,
+      threadId,
+      projectId,
+      title: "Imported thread",
+      modelSelection: {
+        instanceId: ProviderInstanceId.make("codex_work"),
+        model: "gpt-5-codex",
+      },
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      createdAt,
+      createEventId: EventId.make("evt-external-create"),
+      history: [
+        {
+          type: "message",
+          eventId: EventId.make("evt-external-message"),
+          messageId: MessageId.make("msg-external"),
+          role: "user",
+          text: "hello",
+          createdAt,
+        },
+        {
+          type: "activity",
+          eventId: EventId.make("evt-external-activity"),
+          activity: {
+            id: EventId.make("activity-external"),
+            tone: "tool",
+            kind: "external.tool.completed",
+            summary: "Read",
+            payload: {},
+            turnId: null,
+            createdAt,
+          },
+          createdAt,
+        },
+      ],
+      sessionEventId: EventId.make("evt-external-session"),
+      session: {
+        threadId,
+        status: "stopped",
+        providerName: "codex",
+        providerInstanceId: ProviderInstanceId.make("codex_work"),
+        runtimeMode: "full-access",
+        activeTurnId: null,
+        lastError: null,
+        updatedAt: createdAt,
+      },
+      externalChat: {
+        source: "codex",
+        providerInstanceId: ProviderInstanceId.make("codex_work"),
+        nativeSessionId: ExternalChatNativeSessionId.make("native-external-atomic"),
+        candidateId,
+        sourceFingerprint: "sha256:native",
+        importedAt: createdAt,
+        schemaVersion: 1,
+        candidateSnapshot: null,
+        sourceFile: "/tmp/native-external-atomic.jsonl",
+        cwd: "/workspace/external-atomic",
+        modelSelection: {
+          instanceId: ProviderInstanceId.make("codex_work"),
+          model: "gpt-5-codex",
+        },
+        runtimeMode: "full-access",
+        resumeCursor: { threadId: "native-external-atomic", strictResume: true },
+      },
+    } as unknown as OrchestrationCommand;
+
+    await expect(system.run(system.engine.dispatch(importCommand))).rejects.toThrow();
+
+    const residue = await system.countImportResidue(threadId, commandId);
+    expect(residue).toBe(0);
+    expect(Option.isNone(await system.run(system.directory.getBinding(threadId)))).toBe(true);
+
+    await system.run(system.imports.deleteByThreadId({ threadId: ThreadId.make("seed-thread") }));
+    await system.run(system.engine.dispatch(importCommand));
+
+    const eventsAfterRetry = await system.run(
+      Stream.runCollect(system.engine.readEvents(0)).pipe(
+        Effect.map((chunk): OrchestrationEvent[] => Array.from(chunk)),
+      ),
+    );
+    expect(eventsAfterRetry.map((event) => event.type)).toEqual([
+      "project.created",
+      "thread.created",
+      "thread.message-sent",
+      "thread.activity-appended",
+      "thread.session-set",
+    ]);
+    expect(Option.isSome(await system.run(system.directory.getBinding(threadId)))).toBe(true);
+    expect(Option.isSome(await system.run(system.imports.getByCandidateId(candidateId)))).toBe(
+      true,
+    );
+    await system.dispose();
   });
 
   it("reconciles command state when append persists but projection fails", async () => {

@@ -281,6 +281,74 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
       };
     }
 
+    case "thread.external-chat.import": {
+      const planned = yield* decideCommandSequence({
+        readModel,
+        commands: [
+          {
+            type: "thread.create",
+            commandId: command.commandId,
+            threadId: command.threadId,
+            projectId: command.projectId,
+            title: command.title,
+            modelSelection: command.modelSelection,
+            runtimeMode: command.runtimeMode,
+            interactionMode: command.interactionMode,
+            branch: command.branch,
+            worktreePath: command.worktreePath,
+            createdAt: command.createdAt,
+          },
+          ...command.history.map(
+            (record): OrchestrationCommand =>
+              record.type === "message"
+                ? {
+                    type: "thread.message.history.append",
+                    commandId: command.commandId,
+                    threadId: command.threadId,
+                    messageId: record.messageId,
+                    role: record.role,
+                    text: record.text,
+                    createdAt: record.createdAt,
+                  }
+                : {
+                    type: "thread.activity.append",
+                    commandId: command.commandId,
+                    threadId: command.threadId,
+                    activity: record.activity,
+                    createdAt: record.createdAt,
+                  },
+          ),
+          {
+            type: "thread.session.set",
+            commandId: command.commandId,
+            threadId: command.threadId,
+            session: command.session,
+            createdAt: command.externalChat.importedAt,
+          },
+        ],
+      });
+      const eventIds = [
+        command.createEventId,
+        ...command.history.map((record) => record.eventId),
+        command.sessionEventId,
+      ];
+      return planned.map((event, index): PlannedOrchestrationEvent => {
+        const eventId = eventIds[index];
+        if (eventId === undefined) return event;
+        if (event.type === "thread.session-set") {
+          return {
+            ...event,
+            eventId,
+            payload: {
+              ...event.payload,
+              externalChatImport: command.externalChat,
+            },
+          };
+        }
+        return { ...event, eventId };
+      });
+    }
+
     case "thread.create": {
       yield* requireProject({
         readModel,
