@@ -46,19 +46,39 @@ describe("external native chat catalog", () => {
         "command",
         "fileChange",
         "plan",
+        "tool",
+        "tool",
         "error",
         "message",
         "turn",
         "turn",
       ]);
+      expect(session?.events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: "tool",
+            name: "render_diagram",
+            status: "started",
+            toolUseId: "custom-1",
+            summary: '{"topic":"catalog"}',
+          }),
+          expect.objectContaining({
+            type: "tool",
+            name: "render_diagram",
+            status: "completed",
+            toolUseId: "custom-1",
+            summary: "rendered diagram",
+          }),
+        ]),
+      );
       expect(session?.events.map((event) => event.timestamp)).toEqual(
         [...(session?.events ?? [])]
           .map((event) => event.timestamp)
           .sort((left, right) => (left ?? "").localeCompare(right ?? "")),
       );
       expect(session?.diagnostics).toEqual([
-        expect.objectContaining({ kind: "malformed", line: 13 }),
-        expect.objectContaining({ kind: "unknown", line: 14, recordType: "future_native_record" }),
+        expect.objectContaining({ kind: "malformed", line: 15 }),
+        expect.objectContaining({ kind: "unknown", line: 16, recordType: "future_native_record" }),
       ]);
 
       const visible = inspect({ candidate: session?.candidate, events: session?.events });
@@ -96,13 +116,38 @@ describe("external native chat catalog", () => {
         "command",
         "fileChange",
         "plan",
-        "turn",
-        "tool",
+        "command",
         "error",
+        "fileChange",
         "message",
         "turn",
-        "turn",
       ]);
+      expect(session?.events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: "command",
+            command: "pnpm test",
+            status: "failed",
+            toolUseId: "tool-2",
+            output: "command failed",
+          }),
+          expect.objectContaining({
+            type: "fileChange",
+            path: "src/server.ts",
+            status: "completed",
+            toolUseId: "tool-3",
+            output: "File updated",
+          }),
+        ]),
+      );
+      expect(
+        session?.events.filter((event) => event.type === "turn" && event.status === "completed"),
+      ).toHaveLength(1);
+      expect(
+        session?.events.some(
+          (event) => event.type === "tool" && (event.name === "Bash" || event.name === "Edit"),
+        ),
+      ).toBe(false);
       expect(session?.diagnostics).toEqual([
         expect.objectContaining({ kind: "malformed", line: 10 }),
         expect.objectContaining({ kind: "unknown", line: 11, recordType: "future-claude-record" }),
@@ -113,6 +158,24 @@ describe("external native chat catalog", () => {
       expect(visible).not.toContain("ANTHROPIC_API_KEY");
       expect(visible).not.toContain("HIDDEN_QUEUE_BOOKKEEPING");
       expect(visible).not.toContain("UNKNOWN_SECRET_PAYLOAD");
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("excludes Claude sidechain and nested subagent transcripts as candidates", () =>
+    Effect.gen(function* () {
+      const sessions = yield* scanClaudeExternalChats({
+        homeRoot: claudeHomeRoot,
+        providerInstanceId: ProviderInstanceId.make("claude_work"),
+      });
+
+      expect(sessions.map((session) => session.candidate.nativeSessionId)).toEqual([
+        "claude-session-beta",
+      ]);
+      expect(sessions[0]?.events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ type: "message", text: "Add import support" }),
+        ]),
+      );
     }).pipe(Effect.provide(NodeServices.layer)),
   );
 

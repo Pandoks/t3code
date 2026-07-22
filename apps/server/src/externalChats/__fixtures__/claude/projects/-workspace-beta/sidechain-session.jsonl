@@ -1,0 +1,2 @@
+{"type":"user","uuid":"side-user","sessionId":"sidechain-session","timestamp":"2026-07-20T12:00:00.000Z","cwd":"/workspace/beta","isSidechain":true,"message":{"role":"user","content":"Subagent-only prompt"}}
+{"type":"assistant","uuid":"side-assistant","sessionId":"sidechain-session","timestamp":"2026-07-20T12:00:01.000Z","cwd":"/workspace/beta","isSidechain":true,"message":{"role":"assistant","content":[{"type":"text","text":"Subagent-only response"}],"stop_reason":"end_turn"}}

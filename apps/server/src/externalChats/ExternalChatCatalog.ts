@@ -73,7 +73,25 @@ interface ParsedTranscript {
   readonly diagnostics: ReadonlyArray<ExternalChatDiagnostic>;
   readonly timestamps: ReadonlyArray<string>;
   readonly hasNativeMetadata: boolean;
+  readonly isSidechain: boolean;
 }
+
+type ClaudeToolCall =
+  | {
+      readonly kind: "command";
+      readonly name: string;
+      readonly command: string;
+    }
+  | {
+      readonly kind: "fileChange";
+      readonly name: string;
+      readonly path?: string;
+      readonly patch?: string;
+    }
+  | {
+      readonly kind: "tool";
+      readonly name: string;
+    };
 
 const asRecord = (value: unknown): JsonRecord | undefined =>
   typeof value === "object" && value !== null && !Array.isArray(value)
@@ -223,6 +241,7 @@ const parseCodexTranscript = (contents: string, sourceFile: string): ParsedTrans
   const diagnostics = [...parsed.diagnostics];
   const events: Array<TimestampedEvent> = [];
   const seenMessages = new Set<string>();
+  const customToolNames = new Map<string, string>();
   const timestamps: Array<string> = [];
   let nativeSessionId = NodePath.basename(sourceFile, ".jsonl");
   let cwd: string | undefined;
@@ -268,6 +287,36 @@ const parseCodexTranscript = (contents: string, sourceFile: string): ParsedTrans
         });
         continue;
       }
+      if (itemType === "custom_tool_call") {
+        const callId = asString(payload.call_id);
+        const name = asString(payload.name) ?? "Custom tool";
+        const summary = asString(payload.input);
+        if (callId) customToolNames.set(callId, name);
+        addEvent(events, line.line, line.timestamp, {
+          type: "tool",
+          name,
+          status: normalizeStatus(payload.status),
+          ...(callId ? { toolUseId: callId } : {}),
+          ...(summary ? { summary } : {}),
+        });
+        continue;
+      }
+      if (itemType === "custom_tool_call_output") {
+        const callId = asString(payload.call_id);
+        const name =
+          asString(payload.name) ??
+          (callId ? customToolNames.get(callId) : undefined) ??
+          "Custom tool";
+        const summary = jsonSummary(payload.output);
+        addEvent(events, line.line, line.timestamp, {
+          type: "tool",
+          name,
+          status: "completed",
+          ...(callId ? { toolUseId: callId } : {}),
+          ...(summary ? { summary } : {}),
+        });
+        continue;
+      }
       if (itemType === "local_shell_call") {
         const action = asRecord(payload.action);
         addEvent(events, line.line, line.timestamp, {
@@ -279,11 +328,7 @@ const parseCodexTranscript = (contents: string, sourceFile: string): ParsedTrans
         });
         continue;
       }
-      if (
-        itemType === "reasoning" ||
-        itemType === "function_call_output" ||
-        itemType === "custom_tool_call_output"
-      ) {
+      if (itemType === "reasoning" || itemType === "function_call_output") {
         continue;
       }
       diagnostics.push({
@@ -417,6 +462,7 @@ const parseCodexTranscript = (contents: string, sourceFile: string): ParsedTrans
     diagnostics,
     timestamps,
     hasNativeMetadata,
+    isSidechain: false,
   };
 };
 
@@ -448,12 +494,13 @@ const parseClaudeTranscript = (contents: string, sourceFile: string): ParsedTran
   const diagnostics = [...parsed.diagnostics];
   const events: Array<TimestampedEvent> = [];
   const seenMessages = new Set<string>();
-  const toolNames = new Map<string, string>();
+  const toolCalls = new Map<string, ClaudeToolCall>();
   const timestamps: Array<string> = [];
   let nativeSessionId = NodePath.basename(sourceFile, ".jsonl");
   let cwd: string | undefined;
   let title: string | undefined;
   let hasNativeMetadata = false;
+  let isSidechain = false;
 
   for (const line of parsed.lines) {
     if (line.timestamp) timestamps.push(line.timestamp);
@@ -461,6 +508,8 @@ const parseClaudeTranscript = (contents: string, sourceFile: string): ParsedTran
     nativeSessionId =
       asString(line.record.sessionId) ?? asString(line.record.session_id) ?? nativeSessionId;
     cwd = asString(line.record.cwd) ?? cwd;
+    isSidechain =
+      isSidechain || line.record.isSidechain === true || line.record.is_sidechain === true;
     if (asString(line.record.sessionId) || asString(line.record.session_id))
       hasNativeMetadata = true;
 
@@ -468,12 +517,7 @@ const parseClaudeTranscript = (contents: string, sourceFile: string): ParsedTran
       title = asString(line.record.customTitle) ?? asString(line.record.title) ?? title;
       continue;
     }
-    if (type === "system") {
-      if (line.record.subtype === "turn_duration") {
-        addEvent(events, line.line, line.timestamp, { type: "turn", status: "completed" });
-      }
-      continue;
-    }
+    if (type === "system") continue;
     if (type === "user" || type === "assistant") {
       const message = asRecord(line.record.message);
       const content = message?.content;
@@ -506,36 +550,50 @@ const parseClaudeTranscript = (contents: string, sourceFile: string): ParsedTran
             const name = asString(block.name) ?? "Tool";
             const input = asRecord(block.input) ?? {};
             const toolUseId = asString(block.id);
-            if (toolUseId) toolNames.set(toolUseId, name);
             if (["Bash", "Shell", "Terminal"].includes(name)) {
+              const command = asString(input.command) ?? "";
+              if (toolUseId) toolCalls.set(toolUseId, { kind: "command", name, command });
               addEvent(events, eventOrder, line.timestamp, {
                 type: "command",
-                command: asString(input.command) ?? "",
+                command,
                 status: "started",
+                ...(toolUseId ? { toolUseId } : {}),
               });
             } else if (["Edit", "Write", "MultiEdit", "NotebookEdit"].includes(name)) {
               const path = asString(input.file_path);
+              const patch =
+                asString(input.old_string) || asString(input.new_string)
+                  ? `${asString(input.old_string) ?? ""}\n${asString(input.new_string) ?? ""}`
+                  : undefined;
+              if (toolUseId) {
+                toolCalls.set(toolUseId, {
+                  kind: "fileChange",
+                  name,
+                  ...(path ? { path } : {}),
+                  ...(patch ? { patch } : {}),
+                });
+              }
               addEvent(events, eventOrder, line.timestamp, {
                 type: "fileChange",
                 ...(path ? { path } : {}),
-                ...(asString(input.old_string) || asString(input.new_string)
-                  ? {
-                      patch: `${asString(input.old_string) ?? ""}\n${asString(input.new_string) ?? ""}`,
-                    }
-                  : {}),
+                ...(patch ? { patch } : {}),
                 status: "started",
+                ...(toolUseId ? { toolUseId } : {}),
               });
             } else if (["TodoWrite", "EnterPlanMode", "ExitPlanMode"].includes(name)) {
+              if (toolUseId) toolCalls.set(toolUseId, { kind: "tool", name });
               addEvent(events, eventOrder, line.timestamp, {
                 type: "plan",
                 text: claudePlanText(input),
               });
             } else {
               const summary = jsonSummary(input);
+              if (toolUseId) toolCalls.set(toolUseId, { kind: "tool", name });
               addEvent(events, eventOrder, line.timestamp, {
                 type: "tool",
                 name,
                 status: "started",
+                ...(toolUseId ? { toolUseId } : {}),
                 ...(summary ? { summary } : {}),
               });
             }
@@ -544,12 +602,33 @@ const parseClaudeTranscript = (contents: string, sourceFile: string): ParsedTran
             const toolUseId = asString(block.tool_use_id);
             const failed = block.is_error === true;
             const summary = jsonSummary(block.content);
-            addEvent(events, eventOrder, line.timestamp, {
-              type: "tool",
-              name: (toolUseId && toolNames.get(toolUseId)) ?? "Tool",
-              status: failed ? "failed" : "completed",
-              ...(summary ? { summary } : {}),
-            });
+            const toolCall = toolUseId ? toolCalls.get(toolUseId) : undefined;
+            if (toolCall?.kind === "command") {
+              addEvent(events, eventOrder, line.timestamp, {
+                type: "command",
+                command: toolCall.command,
+                status: failed ? "failed" : "completed",
+                ...(toolUseId ? { toolUseId } : {}),
+                ...(summary ? { output: summary } : {}),
+              });
+            } else if (toolCall?.kind === "fileChange") {
+              addEvent(events, eventOrder, line.timestamp, {
+                type: "fileChange",
+                ...(toolCall.path ? { path: toolCall.path } : {}),
+                ...(toolCall.patch ? { patch: toolCall.patch } : {}),
+                status: failed ? "failed" : "completed",
+                ...(toolUseId ? { toolUseId } : {}),
+                ...(summary ? { output: summary } : {}),
+              });
+            } else {
+              addEvent(events, eventOrder, line.timestamp, {
+                type: "tool",
+                name: toolCall?.name ?? "Tool",
+                status: failed ? "failed" : "completed",
+                ...(toolUseId ? { toolUseId } : {}),
+                ...(summary ? { summary } : {}),
+              });
+            }
             if (failed) {
               addEvent(events, eventOrder + 1, line.timestamp, {
                 type: "error",
@@ -560,7 +639,7 @@ const parseClaudeTranscript = (contents: string, sourceFile: string): ParsedTran
         }
       }
 
-      if (type === "assistant" && asString(message?.stop_reason)) {
+      if (type === "assistant" && asString(message?.stop_reason) === "end_turn") {
         addEvent(events, line.line * 100 + 99, line.timestamp, {
           type: "turn",
           status: "completed",
@@ -592,6 +671,7 @@ const parseClaudeTranscript = (contents: string, sourceFile: string): ParsedTran
     diagnostics,
     timestamps,
     hasNativeMetadata,
+    isSidechain,
   };
 };
 
@@ -627,6 +707,13 @@ const discoverJsonlFiles = Effect.fn("ExternalChatCatalog.discoverJsonlFiles")(f
         return entries
           .filter((entry) => entry.isFile() && entry.name.endsWith(".jsonl"))
           .map((entry) => NodePath.join(entry.parentPath, entry.name))
+          .filter((filePath) => {
+            if (source !== "claude") return true;
+            const relativeParts = NodePath.relative(searchRoot, filePath)
+              .split(NodePath.sep)
+              .filter(Boolean);
+            return relativeParts.length === 2;
+          })
           .sort();
       } catch (cause) {
         if (asRecord(cause)?.code === "ENOENT") return [];
@@ -655,6 +742,7 @@ const scanSource = Effect.fn("ExternalChatCatalog.scanSource")(function* (
       source === "codex"
         ? parseCodexTranscript(contents, sourceFile)
         : parseClaudeTranscript(contents, sourceFile);
+    if (source === "claude" && parsed.isSidechain) continue;
     const sortedTimestamps = [...parsed.timestamps].sort();
     const createdAt = sortedTimestamps[0] ?? stat.birthtime.toISOString();
     const updatedAt = sortedTimestamps.at(-1) ?? stat.mtime.toISOString();

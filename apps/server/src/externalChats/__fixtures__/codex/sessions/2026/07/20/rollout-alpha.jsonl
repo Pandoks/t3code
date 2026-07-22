@@ -7,6 +7,8 @@
 {"timestamp":"2026-07-20T10:00:02.500Z","type":"event_msg","payload":{"type":"exec_command_end","call_id":"call-1","turn_id":"turn-1","command":["pnpm","test"],"stdout":"one test failed","stderr":"","exit_code":1,"status":"failed"}}
 {"timestamp":"2026-07-20T10:00:03.500Z","type":"event_msg","payload":{"type":"patch_apply_end","call_id":"call-2","turn_id":"turn-1","stdout":"Done!","stderr":"","success":true,"status":"completed","changes":{"src/parser.ts":{"update":{"unified_diff":"@@ -1 +1 @@\n-old\n+new"}}}}}
 {"timestamp":"2026-07-20T10:00:04.500Z","type":"event_msg","payload":{"type":"plan_update","explanation":"Repair parser","plan":[{"step":"Reproduce failure","status":"completed"},{"step":"Implement fix","status":"in_progress"}]}}
+{"timestamp":"2026-07-20T10:00:04.600Z","type":"response_item","payload":{"type":"custom_tool_call","call_id":"custom-1","name":"render_diagram","status":"in_progress","input":"{\"topic\":\"catalog\"}"}}
+{"timestamp":"2026-07-20T10:00:04.700Z","type":"response_item","payload":{"type":"custom_tool_call_output","call_id":"custom-1","name":"render_diagram","output":"rendered diagram"}}
 {"timestamp":"2026-07-20T10:00:05.000Z","type":"event_msg","payload":{"type":"error","message":"Transient tool error"}}
 {"timestamp":"2026-07-20T10:00:07.000Z","type":"event_msg","payload":{"type":"turn_aborted","turn_id":"turn-1","reason":"interrupted"}}
 {"timestamp":"2026-07-20T10:00:08.000Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-2","last_agent_message":"Implemented the parser."}}

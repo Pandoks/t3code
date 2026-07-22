@@ -1,0 +1,2 @@
+{"type":"user","uuid":"nested-user","sessionId":"nested-agent-session","timestamp":"2026-07-20T13:00:00.000Z","cwd":"/workspace/beta","message":{"role":"user","content":"Nested agent prompt"}}
+{"type":"assistant","uuid":"nested-assistant","sessionId":"nested-agent-session","timestamp":"2026-07-20T13:00:01.000Z","cwd":"/workspace/beta","message":{"role":"assistant","content":[{"type":"text","text":"Nested agent response"}],"stop_reason":"end_turn"}}

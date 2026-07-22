@@ -54,6 +54,7 @@ export const NormalizedHistoricalTool = Schema.Struct({
   type: Schema.Literal("tool"),
   name: TrimmedNonEmptyString,
   status: Schema.Literals(["started", "completed", "failed", "unknown"]),
+  toolUseId: Schema.optionalKey(TrimmedNonEmptyString),
   summary: Schema.optionalKey(Schema.String),
   ...HistoricalEventTimestamp,
 });
@@ -62,6 +63,7 @@ export const NormalizedHistoricalCommand = Schema.Struct({
   type: Schema.Literal("command"),
   command: Schema.String,
   status: Schema.Literals(["started", "completed", "failed", "unknown"]),
+  toolUseId: Schema.optionalKey(TrimmedNonEmptyString),
   output: Schema.optionalKey(Schema.String),
   exitCode: Schema.optionalKey(Schema.Int),
   ...HistoricalEventTimestamp,
@@ -71,6 +73,8 @@ export const NormalizedHistoricalFileChange = Schema.Struct({
   type: Schema.Literal("fileChange"),
   path: Schema.optionalKey(Schema.String),
   patch: Schema.optionalKey(Schema.String),
+  toolUseId: Schema.optionalKey(TrimmedNonEmptyString),
+  output: Schema.optionalKey(Schema.String),
   status: Schema.optionalKey(Schema.Literals(["started", "completed", "failed", "unknown"])),
   ...HistoricalEventTimestamp,
 });

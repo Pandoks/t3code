@@ -111,4 +111,35 @@ describe("external chat contracts", () => {
       "turn",
     ]);
   });
+
+  it("preserves native tool correlation on tool, command, and file-change events", () => {
+    const decode = Schema.decodeUnknownSync(NormalizedHistoricalEvent);
+
+    expect(
+      decode({
+        type: "tool",
+        name: "render_diagram",
+        status: "completed",
+        toolUseId: "call-1",
+      }),
+    ).toMatchObject({ toolUseId: "call-1" });
+    expect(
+      decode({
+        type: "command",
+        command: "pnpm test",
+        status: "failed",
+        output: "failed",
+        toolUseId: "tool-2",
+      }),
+    ).toMatchObject({ toolUseId: "tool-2" });
+    expect(
+      decode({
+        type: "fileChange",
+        path: "src/server.ts",
+        status: "completed",
+        output: "File updated",
+        toolUseId: "tool-3",
+      }),
+    ).toMatchObject({ output: "File updated", toolUseId: "tool-3" });
+  });
 });
