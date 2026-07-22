@@ -11,6 +11,7 @@ import {
   CursorIcon,
   Icon,
   KiroIcon,
+  NeovimIcon,
   TraeIcon,
   VisualStudioCode,
   VisualStudioCodeInsiders,
@@ -190,6 +191,7 @@ export const OpenInPicker = memo(function OpenInPicker({
   openInCwd,
   compact = false,
   enableShortcut = true,
+  onOpenInNeovim,
 }: {
   environmentId: EnvironmentId;
   keybindings: ResolvedKeybindingsConfig;
@@ -197,6 +199,8 @@ export const OpenInPicker = memo(function OpenInPicker({
   openInCwd: string | null;
   compact?: boolean;
   enableShortcut?: boolean;
+  /** Opens an in-app terminal running nvim instead of an external editor. */
+  onOpenInNeovim?: (() => void) | undefined;
 }) {
   const openInEditorMutation = useAtomCommand(shellEnvironment.openInEditor, "open in editor");
   const [preferredEditor, setPreferredEditor] = usePreferredEditor(availableEditors);
@@ -295,7 +299,15 @@ export const OpenInPicker = memo(function OpenInPicker({
           <ChevronDownIcon aria-hidden="true" className="size-4" />
         </MenuTrigger>
         <MenuPopup align="end">
-          {options.length === 0 && <MenuItem disabled>No installed editors found</MenuItem>}
+          {options.length === 0 && !onOpenInNeovim && (
+            <MenuItem disabled>No installed editors found</MenuItem>
+          )}
+          {onOpenInNeovim && (
+            <MenuItem disabled={!openInCwd} onClick={() => onOpenInNeovim()}>
+              <NeovimIcon aria-hidden="true" className={getOpenInIconClass("brand")} />
+              Neovim
+            </MenuItem>
+          )}
           {options.map(({ label, Icon, value, kind }) => (
             <MenuItem key={value} onClick={() => openInEditor(value)}>
               <Icon aria-hidden="true" className={getOpenInIconClass(kind)} />

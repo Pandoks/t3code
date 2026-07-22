@@ -3025,6 +3025,74 @@ function ChatViewContent(props: ChatViewProps) {
   const splitPanelTerminalVertical = useCallback(() => {
     splitPanelTerminal("vertical");
   }, [splitPanelTerminal]);
+  const openInNeovim = useCallback(async () => {
+    if (!activeThreadRef || !activeThreadId || !activeProject) return;
+    const cwd = gitCwd ?? activeProject.workspaceRoot;
+    const terminalId = nextTerminalId([...activeKnownTerminalIds, ...panelTerminalIds]);
+    const runtimeEnv = projectScriptRuntimeEnv({
+      project: { cwd: activeProject.workspaceRoot },
+      worktreePath: activeThreadWorktreePath,
+    });
+    // Wide windows put nvim beside the chat in the right panel; tall windows
+    // use the bottom terminal drawer.
+    const isWide = window.innerWidth > window.innerHeight;
+    if (isWide) {
+      useRightPanelStore.getState().openTerminal(activeThreadRef, terminalId);
+    } else {
+      setTerminalUiLaunchContext({
+        threadId: activeThreadId,
+        cwd,
+        worktreePath: activeThreadWorktreePath,
+      });
+      setTerminalOpen(true);
+      storeNewTerminal(activeThreadRef, terminalId);
+    }
+    setTerminalFocusRequestId((value) => value + 1);
+    const openResult = await openTerminal({
+      environmentId: activeThreadRef.environmentId,
+      input: {
+        threadId: activeThreadId,
+        terminalId,
+        cwd,
+        ...(activeThreadWorktreePath != null ? { worktreePath: activeThreadWorktreePath } : {}),
+        env: runtimeEnv,
+      },
+    });
+    if (openResult._tag === "Failure") {
+      if (!isAtomCommandInterrupted(openResult)) {
+        const error = squashAtomCommandFailure(openResult);
+        setThreadError(
+          activeThreadId,
+          error instanceof Error ? error.message : "Failed to open a terminal for Neovim.",
+        );
+      }
+      return;
+    }
+    const writeResult = await writeTerminal({
+      environmentId: activeThreadRef.environmentId,
+      input: { threadId: activeThreadId, terminalId, data: "nvim .\r" },
+    });
+    if (writeResult._tag === "Failure" && !isAtomCommandInterrupted(writeResult)) {
+      const error = squashAtomCommandFailure(writeResult);
+      setThreadError(
+        activeThreadId,
+        error instanceof Error ? error.message : "Failed to start Neovim.",
+      );
+    }
+  }, [
+    activeKnownTerminalIds,
+    activeProject,
+    activeThreadId,
+    activeThreadRef,
+    activeThreadWorktreePath,
+    gitCwd,
+    openTerminal,
+    panelTerminalIds,
+    setTerminalOpen,
+    setThreadError,
+    storeNewTerminal,
+    writeTerminal,
+  ]);
   const activatePanelTerminal = useCallback(
     (terminalId: string) => {
       if (!activeThreadRef || activeRightPanelSurface?.kind !== "terminal") return;
@@ -5228,6 +5296,7 @@ function ChatViewContent(props: ChatViewProps) {
             availableEditors={availableEditors}
             rightPanelOpen={rightPanelOpen}
             gitCwd={gitCwd}
+            onOpenInNeovim={openInNeovim}
             onRunProjectScript={runProjectScript}
             onAddProjectScript={saveProjectScript}
             onUpdateProjectScript={updateProjectScript}
