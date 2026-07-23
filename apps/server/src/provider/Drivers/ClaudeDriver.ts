@@ -159,6 +159,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
         instanceId,
         driver: DRIVER_KIND,
         displayName: displayName ?? "Claude",
+        minimumRefreshInterval: "5 minutes",
         load: makeClaudeUsageSource({
           config: effectiveConfig,
           environment: processEnv,

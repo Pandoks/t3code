@@ -106,7 +106,7 @@ export const makeProviderUsageRegistry = Effect.fn("makeProviderUsageRegistry")(
       return result;
     });
 
-  const getSnapshotList = collect();
+  const getSnapshotList = SubscriptionRef.get(state);
   const refresh = (input?: ProviderUsageRefreshInput) =>
     collect({ refresh: true, ...(input?.instanceId ? { instanceId: input.instanceId } : {}) });
 

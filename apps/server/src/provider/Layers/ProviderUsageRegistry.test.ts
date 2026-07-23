@@ -48,7 +48,7 @@ it.effect("aggregates only instances that expose a usage capability", () =>
     const registry = yield* makeProviderUsageRegistry(instances);
     const result = yield* registry.getSnapshotList;
 
-    assert.strictEqual(result.snapshots[0]?.status, "ready");
+    assert.strictEqual(result.snapshots[0]?.status, "refreshing");
     assert.strictEqual(result.snapshots.length, 1);
   }),
 );
@@ -190,4 +190,56 @@ it.effect("streams the initial refreshing snapshot followed by startup completio
       ["refreshing", "ready"],
     );
   }),
+);
+
+it.effect(
+  "does not start a second provider load when the initial list is read during startup",
+  () =>
+    Effect.gen(function* () {
+      const changes = yield* PubSub.unbounded<void>();
+      const gate = yield* Deferred.make<void>();
+      const refreshCalls = yield* Ref.make(0);
+      const snapshotCalls = yield* Ref.make(0);
+      const ready = {
+        instanceId,
+        driver,
+        displayName: "Work Codex",
+        status: "ready" as const,
+        checkedAt: "2026-07-22T12:00:01.000Z",
+        lastSuccessfulAt: "2026-07-22T12:00:01.000Z",
+        headlineWindowId: null,
+        windows: [],
+      };
+      const instances = {
+        listInstances: Effect.succeed([
+          {
+            instanceId,
+            driverKind: driver,
+            displayName: "Work Codex",
+            usage: {
+              getSnapshot: Ref.update(snapshotCalls, (value) => value + 1).pipe(
+                Effect.andThen(Deferred.await(gate)),
+                Effect.as(ready),
+              ),
+              refresh: Ref.update(refreshCalls, (value) => value + 1).pipe(
+                Effect.andThen(Deferred.await(gate)),
+                Effect.as(ready),
+              ),
+            },
+          },
+        ] as unknown as ReadonlyArray<ProviderInstance>),
+        streamChanges: Stream.never,
+        subscribeChanges: PubSub.subscribe(changes),
+      } as unknown as ProviderInstanceRegistryShape;
+
+      const registry = yield* makeProviderUsageRegistry(instances);
+      const initialFiber = yield* registry.getSnapshotList.pipe(Effect.forkChild);
+      yield* Effect.yieldNow;
+
+      assert.strictEqual(yield* Ref.get(snapshotCalls), 0);
+      assert.strictEqual(yield* Ref.get(refreshCalls), 1);
+      yield* Deferred.succeed(gate, undefined);
+      const initial = yield* Fiber.join(initialFiber);
+      assert.strictEqual(initial.snapshots[0]?.status, "refreshing");
+    }),
 );

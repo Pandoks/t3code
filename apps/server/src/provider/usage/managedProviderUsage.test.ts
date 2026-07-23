@@ -55,6 +55,28 @@ it.effect("coalesces concurrent refreshes, bypasses the cache manually, and cach
   }),
 );
 
+it.effect("throttles sequential refreshes when a minimum refresh interval is configured", () =>
+  Effect.gen(function* () {
+    const calls = yield* Ref.make(0);
+    const usage = yield* makeManagedProviderUsage({
+      instanceId: ProviderInstanceId.make("claude"),
+      driver: ProviderDriverKind.make("claudeAgent"),
+      displayName: "Claude",
+      minimumRefreshInterval: "5 minutes",
+      load: Ref.updateAndGet(calls, (value) => value + 1).pipe(Effect.as(readyDraft)),
+    });
+
+    const first = yield* usage.refresh;
+    const throttled = yield* usage.refresh;
+    assert.strictEqual(yield* Ref.get(calls), 1);
+    assert.deepEqual(throttled, first);
+
+    yield* TestClock.adjust("5 minutes");
+    yield* usage.refresh;
+    assert.strictEqual(yield* Ref.get(calls), 2);
+  }),
+);
+
 it.effect("bounds the full load and preserves the last good snapshot on timeout", () =>
   Effect.gen(function* () {
     const hangs = yield* Ref.make(false);
