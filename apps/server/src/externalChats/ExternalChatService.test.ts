@@ -119,10 +119,12 @@ const settingsLayer = serverSettingsLayerTest({
   providerInstances: {
     [ProviderInstanceId.make("codex_work")]: {
       driver: "codex",
+      displayName: "Codex Work",
       config: { homePath: codexFixtureHome },
     },
     [ProviderInstanceId.make("claude_work")]: {
       driver: "claudeAgent",
+      displayName: "Claude Work",
       config: { homePath: claudeFixtureHome },
     },
   },
@@ -248,6 +250,7 @@ it.layer(testLayer)("ExternalChatService", (it) => {
       const listed = yield* service.list({ sources: ["codex"] });
       const imported = listed.candidates.find((candidate) => candidate.alreadyImportedThreadId);
       expect(imported?.providerInstanceId).toBe("codex_work");
+      expect(imported?.providerDisplayName).toBe("Codex Work");
       expect(imported?.alreadyImportedThreadId).toBeDefined();
       expect(
         Option.isSome(
@@ -317,10 +320,12 @@ it.layer(testLayer)("ExternalChatService", (it) => {
         providerInstances: {
           [ProviderInstanceId.make("codex_isolated_a")]: {
             driver: ProviderDriverKind.make("codex"),
+            displayName: "Codex Alpha",
             config: { homePath: codexFixtureHome },
           },
           [ProviderInstanceId.make("codex_isolated_b")]: {
             driver: ProviderDriverKind.make("codex"),
+            displayName: "Codex Beta",
             config: { homePath: codexFixtureHome },
           },
         },
@@ -336,6 +341,9 @@ it.layer(testLayer)("ExternalChatService", (it) => {
           isolatedProviderInstanceIds.has(candidate.providerInstanceId),
       );
       expect(isolatedCandidates).toHaveLength(2);
+      expect(
+        isolatedCandidates.map((candidate) => candidate.providerDisplayName).toSorted(),
+      ).toEqual(["Codex Alpha", "Codex Beta"]);
       const imported = yield* service.import({
         candidateIds: isolatedCandidates.map((candidate) => candidate.candidateId),
       });

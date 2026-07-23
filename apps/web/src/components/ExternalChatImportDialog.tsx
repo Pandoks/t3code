@@ -79,6 +79,31 @@ const SOURCE_DRIVER_KINDS: Record<ExternalChatSource, ProviderDriverKind> = {
   claude: ProviderDriverKind.make("claudeAgent"),
 };
 
+const DEFAULT_PROVIDER_INSTANCE_IDS: Record<ExternalChatSource, string> = {
+  codex: "codex",
+  claude: "claudeAgent",
+};
+
+function humanizeProviderInstanceId(providerInstanceId: string): string {
+  return providerInstanceId
+    .replace(/[_-]+/gu, " ")
+    .replace(/([a-z])([A-Z])/gu, "$1 $2")
+    .split(" ")
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+function externalChatProviderLabel(candidate: ExternalChatCandidate): string {
+  if (candidate.providerDisplayName) return candidate.providerDisplayName;
+  if (candidate.providerInstanceId === DEFAULT_PROVIDER_INSTANCE_IDS[candidate.source]) {
+    return SOURCE_LABELS[candidate.source];
+  }
+  return (
+    humanizeProviderInstanceId(candidate.providerInstanceId) || SOURCE_LABELS[candidate.source]
+  );
+}
+
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message.trim().length > 0 ? error.message : fallback;
 }
@@ -281,7 +306,7 @@ export function ExternalChatCandidateRow(props: {
 }) {
   const state = getExternalChatCandidateState(props.candidate);
   const destination = props.projects.find((project) => project.id === props.destinationProjectId);
-  const providerLabel = SOURCE_LABELS[props.candidate.source];
+  const providerLabel = externalChatProviderLabel(props.candidate);
   const ProviderIcon = PROVIDER_ICON_BY_PROVIDER[SOURCE_DRIVER_KINDS[props.candidate.source]];
   return (
     <div

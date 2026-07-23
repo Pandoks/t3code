@@ -32,6 +32,7 @@ export interface NativeExternalChat {
 export interface ExternalChatScannerInput {
   readonly homeRoot: string;
   readonly providerInstanceId: ProviderInstanceId;
+  readonly providerDisplayName?: string;
 }
 
 export interface ExternalChatSourceConfig extends ExternalChatScannerInput {
@@ -76,6 +77,7 @@ interface ParsedTranscript {
   readonly timestamps: ReadonlyArray<string>;
   readonly hasNativeMetadata: boolean;
   readonly isSidechain: boolean;
+  readonly isSubagent: boolean;
   readonly lastAssistantUuid?: string;
 }
 
@@ -306,6 +308,7 @@ const parseCodexTranscript = (contents: string, sourceFile: string): ParsedTrans
   let title: string | undefined;
   let parentThreadId: string | undefined;
   let hasNativeMetadata = false;
+  let isSubagent = false;
 
   for (const line of parsed.lines) {
     if (line.record.type !== "response_item") continue;
@@ -327,10 +330,13 @@ const parseCodexTranscript = (contents: string, sourceFile: string): ParsedTrans
       hasNativeMetadata = true;
       nativeSessionId = asString(payload.id) ?? asString(payload.session_id) ?? nativeSessionId;
       cwd = asString(payload.cwd) ?? cwd;
+      const nativeSource = asRecord(payload.source);
+      const subagentSource = nativeSource?.subagent;
+      isSubagent = isSubagent || subagentSource !== undefined;
       parentThreadId =
-        asString(
-          asRecord(asRecord(asRecord(payload.source)?.subagent)?.thread_spawn)?.parent_thread_id,
-        ) ?? parentThreadId;
+        asString(payload.parent_thread_id) ??
+        asString(asRecord(asRecord(subagentSource)?.thread_spawn)?.parent_thread_id) ??
+        parentThreadId;
       const metadataTimestamp = asString(payload.timestamp);
       if (metadataTimestamp) timestamps.push(metadataTimestamp);
       continue;
@@ -574,6 +580,7 @@ const parseCodexTranscript = (contents: string, sourceFile: string): ParsedTrans
     timestamps,
     hasNativeMetadata,
     isSidechain: false,
+    isSubagent,
   };
 };
 
@@ -790,23 +797,81 @@ const parseClaudeTranscript = (contents: string, sourceFile: string): ParsedTran
     timestamps,
     hasNativeMetadata,
     isSidechain,
+    isSubagent: false,
     ...(lastAssistantUuid ? { lastAssistantUuid } : {}),
   };
 };
 
-const isInjectedMessageWrapper = (text: string) =>
-  /^<recommended_plugins>[\s\S]*<\/recommended_plugins>$/u.test(text.trim());
+const injectedLeadingTags = [
+  "recommended_plugins",
+  "environment_context",
+  "local-command-caveat",
+  "command-name",
+  "command-message",
+  "command-args",
+  "local-command-stdout",
+  "local-command-stderr",
+  "system-reminder",
+] as const;
+
+const stripLeadingTaggedBlock = (text: string, tag: string): string | undefined => {
+  const openingTag = `<${tag}>`;
+  if (!text.startsWith(openingTag)) return undefined;
+  const closingTag = `</${tag}>`;
+  const closingIndex = text.indexOf(closingTag, openingTag.length);
+  return closingIndex === -1 ? undefined : text.slice(closingIndex + closingTag.length).trimStart();
+};
+
+const stripLeadingAgentsInstructions = (text: string): string | undefined => {
+  if (!/^# AGENTS\.md instructions(?: for [^\r\n]+)?(?:\r?\n|$)/u.test(text)) {
+    return undefined;
+  }
+  const openingIndex = text.indexOf("<INSTRUCTIONS>");
+  const closingTag = "</INSTRUCTIONS>";
+  const closingIndex = text.indexOf(closingTag, openingIndex + "<INSTRUCTIONS>".length);
+  return openingIndex === -1 || closingIndex === -1
+    ? undefined
+    : text.slice(closingIndex + closingTag.length).trimStart();
+};
+
+const displayTextFromMessage = (text: string): string | undefined => {
+  let remaining = text.trimStart();
+  while (remaining.length > 0) {
+    const withoutAgents = stripLeadingAgentsInstructions(remaining);
+    if (withoutAgents !== undefined) {
+      remaining = withoutAgents;
+      continue;
+    }
+    const withoutTag = injectedLeadingTags.reduce<string | undefined>(
+      (stripped, tag) => stripped ?? stripLeadingTaggedBlock(remaining, tag),
+      undefined,
+    );
+    if (withoutTag === undefined) break;
+    remaining = withoutTag;
+  }
+  const visible = remaining.trim();
+  return visible.length > 0 ? visible : undefined;
+};
+
+const isInjectedTitle = (title: string): boolean => {
+  const trimmed = title.trimStart();
+  return (
+    /^# AGENTS\.md instructions(?: for [^\r\n]+)?(?:\r?\n|$)/u.test(trimmed) ||
+    injectedLeadingTags.some((tag) => trimmed.startsWith(`<${tag}>`))
+  );
+};
 
 const firstMessage = (
   events: ReadonlyArray<NormalizedHistoricalEvent>,
   role?: "user" | "assistant",
-) =>
-  events.find(
-    (event): event is Extract<NormalizedHistoricalEvent, { readonly type: "message" }> =>
-      event.type === "message" &&
-      !isInjectedMessageWrapper(event.text) &&
-      (!role || event.role === role),
-  )?.text;
+) => {
+  for (const event of events) {
+    if (event.type !== "message" || (role && event.role !== role)) continue;
+    const text = event.role === "user" ? displayTextFromMessage(event.text) : event.text;
+    if (text) return text;
+  }
+  return undefined;
+};
 
 const titleFromMessage = (message: string | undefined) => {
   const title = message?.split(/\r?\n/u)[0]?.trim();
@@ -868,7 +933,7 @@ const scanSource = Effect.fn("ExternalChatCatalog.scanSource")(function* (
         : parseClaudeTranscript(contents, sourceFile);
     if (
       (source === "claude" && parsed.isSidechain) ||
-      (source === "codex" && parsed.parentThreadId)
+      (source === "codex" && (parsed.isSubagent || parsed.parentThreadId))
     ) {
       continue;
     }
@@ -884,14 +949,16 @@ const scanSource = Effect.fn("ExternalChatCatalog.scanSource")(function* (
       );
     const resumable =
       parsed.hasNativeMetadata && parsed.cwd !== undefined && hasRuntimeCompatibleNativeId;
+    const nativeTitle = parsed.title && !isInjectedTitle(parsed.title) ? parsed.title : undefined;
     const candidate: ExternalChatCandidate = {
       source,
       candidateId: makeCandidateId(source, input.providerInstanceId, parsed.nativeSessionId),
       providerInstanceId: input.providerInstanceId,
+      ...(input.providerDisplayName ? { providerDisplayName: input.providerDisplayName } : {}),
       nativeSessionId: ExternalChatNativeSessionId.make(parsed.nativeSessionId),
       ...(parsed.cwd ? { cwd: parsed.cwd, projectPath: parsed.cwd } : {}),
       title:
-        parsed.title ??
+        nativeTitle ??
         titleFromMessage(firstUserMessage ?? firstVisibleMessage) ??
         `${source === "codex" ? "Codex" : "Claude"} session`,
       preview: previewFromMessage(firstUserMessage ?? firstVisibleMessage),

@@ -109,6 +109,7 @@ const sourceConfigs = Effect.fn("ExternalChatService.sourceConfigs")(function* (
     sources.push({
       source,
       providerInstanceId: rawInstanceId as ProviderInstanceId,
+      ...(instance.displayName ? { providerDisplayName: instance.displayName } : {}),
       homeRoot: homePathFromConfig(instance.config, source === "codex" ? "~/.codex" : "~/.claude"),
     });
   }

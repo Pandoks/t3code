@@ -32,6 +32,7 @@ describe("external chat contracts", () => {
       source: "codex",
       candidateId: "extchat_v1_0123456789abcdef",
       providerInstanceId: "codex_work",
+      providerDisplayName: "Codex Work",
       nativeSessionId: "019f-session",
       cwd: "/workspace/t3code",
       projectPath: "/workspace/t3code",
@@ -49,6 +50,7 @@ describe("external chat contracts", () => {
     expect(decoded).toMatchObject({
       source: "codex",
       providerInstanceId: "codex_work",
+      providerDisplayName: "Codex Work",
       messageCount: 2,
       resumability: { status: "resumable" },
       alreadyImportedThreadId: "thread-existing",

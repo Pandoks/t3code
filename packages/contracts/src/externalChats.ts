@@ -32,6 +32,7 @@ export const ExternalChatCandidate = Schema.Struct({
   source: ExternalChatSource,
   candidateId: ExternalChatCandidateId,
   providerInstanceId: ProviderInstanceId,
+  providerDisplayName: Schema.optionalKey(TrimmedNonEmptyString),
   nativeSessionId: ExternalChatNativeSessionId,
   cwd: Schema.optionalKey(TrimmedNonEmptyString),
   projectPath: Schema.optionalKey(TrimmedNonEmptyString),

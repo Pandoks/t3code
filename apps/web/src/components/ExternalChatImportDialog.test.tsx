@@ -208,6 +208,40 @@ describe("ExternalChatCandidateRow", () => {
     expect(textContent(claudeRow)).not.toContain("claudeAgent");
   });
 
+  it("distinguishes multiple instances of the same provider", () => {
+    const rowProps = {
+      selected: false,
+      destinationProjectId: null,
+      projects: [],
+      error: null,
+      onSelect: vi.fn(),
+      onProjectChange: vi.fn(),
+      onOpenImported: vi.fn(),
+    };
+    const workRow = ExternalChatCandidateRow({
+      ...rowProps,
+      candidate: candidate({
+        providerInstanceId: "claude_work",
+        providerDisplayName: "Claude Work",
+      }),
+    });
+    const personalRow = ExternalChatCandidateRow({
+      ...rowProps,
+      candidate: candidate({
+        providerInstanceId: "claude_personal",
+      }),
+    });
+
+    expect(textContent(workRow)).toContain("Claude Work");
+    expect(textContent(personalRow)).toContain("Claude Personal");
+    expect(
+      findElement(workRow, (element) => element.props.role === "img")?.props["aria-label"],
+    ).toBe("Claude Work");
+    expect(
+      findElement(personalRow, (element) => element.props.role === "img")?.props["aria-label"],
+    ).toBe("Claude Personal");
+  });
+
   it("prevents selection mutation while another lifecycle request is active", () => {
     const onSelect = vi.fn();
     const row = ExternalChatCandidateRow({
