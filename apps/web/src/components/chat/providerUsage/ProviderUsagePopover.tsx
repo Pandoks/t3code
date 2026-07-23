@@ -106,6 +106,7 @@ function SupportedProviderUsagePopover(props: ProviderUsagePopoverProps) {
             <PopoverTrigger
               render={
                 <ProviderUsageTrigger
+                  providerDriver={props.activeDriver}
                   providerDisplayName={props.activeProviderDisplayName}
                   expanded={open}
                   {...(activeSnapshot
