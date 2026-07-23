@@ -59,6 +59,7 @@ import {
 } from "./CodexHomeLayout.ts";
 import { makeCodexUsageSource } from "../usage/codexUsageSource.ts";
 import { makeManagedProviderUsage } from "../usage/managedProviderUsage.ts";
+import type { ProviderUsageCapability } from "../usage/ProviderUsage.ts";
 const decodeCodexSettings = Schema.decodeSync(CodexSettings);
 
 const DRIVER_KIND = ProviderDriverKind.make("codex");
@@ -118,6 +119,8 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv> = {
   create: ({ instanceId, displayName, accentColor, environment, enabled, config }) =>
     Effect.gen(function* () {
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
       const { cwd } = yield* ServerConfig;
       const httpClient = yield* HttpClient.HttpClient;
       const serverSettings = yield* ServerSettingsService;
@@ -158,9 +161,12 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv> = {
       // here; the registry only has to worry about snapshot-build and
       // spawner-availability failures surfaced from `checkCodexProviderStatus`
       // below.
+      let usageCapability: ProviderUsageCapability | undefined;
       const adapter = yield* makeCodexAdapter(effectiveConfig, {
         instanceId,
         environment: processEnv,
+        onRateLimitsUpdated: () =>
+          usageCapability ? usageCapability.refresh.pipe(Effect.asVoid) : Effect.void,
         ...(eventLoggers.native ? { nativeEventLogger: eventLoggers.native } : {}),
       });
       const textGeneration = yield* makeCodexTextGeneration(effectiveConfig, processEnv);
@@ -172,8 +178,14 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv> = {
           config: effectiveConfig,
           cwd,
           environment: processEnv,
-        }).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner)),
+        }).pipe(
+          Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+          Effect.provideService(FileSystem.FileSystem, fileSystem),
+          Effect.provideService(HttpClient.HttpClient, httpClient),
+          Effect.provideService(Path.Path, path),
+        ),
       });
+      usageCapability = usage;
 
       // Build a managed snapshot whose settings never change — mutations come
       // in as instance rebuilds from the registry rather than in-place

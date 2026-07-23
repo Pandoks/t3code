@@ -55,6 +55,7 @@ import {
 } from "../providerUpdateSettings.ts";
 import { makeClaudeUsageSource } from "../usage/claudeUsageSource.ts";
 import { makeManagedProviderUsage } from "../usage/managedProviderUsage.ts";
+import type { ProviderUsageCapability } from "../usage/ProviderUsage.ts";
 import { makeClaudeCapabilitiesCacheKey, makeClaudeContinuationGroupKey } from "./ClaudeHome.ts";
 const decodeClaudeSettings = Schema.decodeSync(ClaudeSettings);
 
@@ -144,9 +145,12 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
         continuationGroupKey,
       });
 
+      let usageCapability: ProviderUsageCapability | undefined;
       const adapterOptions = {
         instanceId,
         environment: processEnv,
+        onRateLimitsUpdated: () =>
+          usageCapability ? usageCapability.refresh.pipe(Effect.asVoid) : Effect.void,
         ...(eventLoggers.native ? { nativeEventLogger: eventLoggers.native } : {}),
       };
       const adapter = yield* makeClaudeAdapter(effectiveConfig, adapterOptions);
@@ -160,9 +164,12 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
           environment: processEnv,
         }).pipe(
           Effect.provideService(FileSystem.FileSystem, fileSystem),
+          Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+          Effect.provideService(HttpClient.HttpClient, httpClient),
           Effect.provideService(Path.Path, path),
         ),
       });
+      usageCapability = usage;
 
       // Per-instance capabilities cache: keyed on binary + resolved HOME so
       // account-specific probes never share auth metadata across instances.

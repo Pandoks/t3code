@@ -7,6 +7,8 @@ import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as PlatformError from "effect/PlatformError";
 import * as Option from "effect/Option";
+import { HttpClient } from "effect/unstable/http";
+import { ChildProcessSpawner } from "effect/unstable/process";
 
 import { expandHomePath } from "../../pathExpansion.ts";
 import * as PtyAdapter from "../../terminal/PtyAdapter.ts";
@@ -18,6 +20,7 @@ import {
   type ClaudeHistoryRecord,
 } from "./claudeHistory.ts";
 import { makeClaudeNativeUsageSource, type ClaudeUsageProbeError } from "./claudeUsageProbe.ts";
+import { makeClaudeOAuthUsageSource } from "./claudeOAuthUsage.ts";
 
 const makeRuntimePtyAdapter = Effect.suspend(() => {
   if (typeof Bun !== "undefined") {
@@ -90,7 +93,10 @@ export function makeClaudeUsageSource(input: {
 }): Effect.Effect<
   ProviderUsageSnapshotDraft,
   PlatformError.PlatformError | ClaudeUsageProbeError | PtyAdapter.PtySpawnError,
-  FileSystem.FileSystem | Path.Path
+  | ChildProcessSpawner.ChildProcessSpawner
+  | FileSystem.FileSystem
+  | HttpClient.HttpClient
+  | Path.Path
 > {
   return Effect.gen(function* () {
     const path = yield* Path.Path;
@@ -103,8 +109,18 @@ export function makeClaudeUsageSource(input: {
     const today = DateTime.formatIso(now).slice(0, 10);
     const historyCutoffEpochMillis = DateTime.toEpochMillis(DateTime.subtract(now, { days: 30 }));
     const [quota, records] = yield* Effect.all([
-      makeClaudeNativeUsageSource(input).pipe(
-        Effect.provideService(PtyAdapter.PtyAdapter, ptyAdapter),
+      makeClaudeOAuthUsageSource({
+        credentialPaths: [
+          path.join(configPath, ".credentials.json"),
+          path.join(NodeOS.homedir(), ".claude", ".credentials.json"),
+        ],
+        environment: input.environment,
+      }).pipe(
+        Effect.catch(() =>
+          makeClaudeNativeUsageSource(input).pipe(
+            Effect.provideService(PtyAdapter.PtyAdapter, ptyAdapter),
+          ),
+        ),
       ),
       readClaudeHistoryRecords(configPath, historyCutoffEpochMillis).pipe(
         Effect.catch(() => Effect.succeed([])),
