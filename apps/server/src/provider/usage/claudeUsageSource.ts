@@ -87,6 +87,10 @@ const readClaudeHistoryRecords = Effect.fn("readClaudeHistoryRecords")(function*
   return records;
 });
 
+export function claudeCredentialPaths(configPath: string): ReadonlyArray<string> {
+  return [`${configPath}/.credentials.json`];
+}
+
 export function makeClaudeUsageSource(input: {
   readonly config: Pick<ClaudeSettings, "binaryPath" | "homePath">;
   readonly environment: NodeJS.ProcessEnv;
@@ -110,10 +114,7 @@ export function makeClaudeUsageSource(input: {
     const historyCutoffEpochMillis = DateTime.toEpochMillis(DateTime.subtract(now, { days: 30 }));
     const [quota, records] = yield* Effect.all([
       makeClaudeOAuthUsageSource({
-        credentialPaths: [
-          path.join(configPath, ".credentials.json"),
-          path.join(NodeOS.homedir(), ".claude", ".credentials.json"),
-        ],
+        credentialPaths: claudeCredentialPaths(configPath),
         environment: input.environment,
       }).pipe(
         Effect.catch(() =>

@@ -1,4 +1,5 @@
 import * as Deferred from "effect/Deferred";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Ref from "effect/Ref";
@@ -71,7 +72,12 @@ it.effect("throttles sequential refreshes when a minimum refresh interval is con
     assert.strictEqual(yield* Ref.get(calls), 1);
     assert.deepEqual(throttled, first);
 
-    yield* TestClock.adjust("5 minutes");
+    yield* TestClock.adjust("61 seconds");
+    const cachedRead = yield* usage.getSnapshot;
+    assert.strictEqual(yield* Ref.get(calls), 1);
+    assert.deepEqual(cachedRead, first);
+
+    yield* TestClock.adjust(Duration.seconds(239));
     yield* usage.refresh;
     assert.strictEqual(yield* Ref.get(calls), 2);
   }),

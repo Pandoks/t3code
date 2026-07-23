@@ -113,7 +113,9 @@ export function makeManagedProviderUsage<E>(input: {
       }),
     );
     return {
-      getSnapshot: cached,
+      getSnapshot: Ref.get(lastAttempt).pipe(
+        Effect.flatMap((previous) => (previous ? Effect.succeed(previous.snapshot) : cached)),
+      ),
       refresh,
     };
   });

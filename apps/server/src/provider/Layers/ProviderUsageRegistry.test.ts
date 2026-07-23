@@ -243,3 +243,60 @@ it.effect(
       assert.strictEqual(initial.snapshots[0]?.status, "refreshing");
     }),
 );
+
+it.effect("serializes overlapping registry refreshes", () =>
+  Effect.gen(function* () {
+    const changes = yield* PubSub.unbounded<void>();
+    const gate = yield* Deferred.make<void>();
+    const active = yield* Ref.make(0);
+    const maximumActive = yield* Ref.make(0);
+    const refreshCalls = yield* Ref.make(0);
+    const ready = {
+      instanceId,
+      driver,
+      displayName: "Work Codex",
+      status: "ready" as const,
+      checkedAt: "2026-07-22T12:00:01.000Z",
+      lastSuccessfulAt: "2026-07-22T12:00:01.000Z",
+      headlineWindowId: null,
+      windows: [],
+    };
+    const refresh = Ref.updateAndGet(refreshCalls, (value) => value + 1).pipe(
+      Effect.flatMap((call) =>
+        call === 1
+          ? Effect.succeed(ready)
+          : Ref.updateAndGet(active, (value) => value + 1).pipe(
+              Effect.tap((value) =>
+                Ref.update(maximumActive, (maximum) => Math.max(maximum, value)),
+              ),
+              Effect.andThen(Deferred.await(gate)),
+              Effect.ensuring(Ref.update(active, (value) => value - 1)),
+              Effect.as(ready),
+            ),
+      ),
+    );
+    const instances = {
+      listInstances: Effect.succeed([
+        {
+          instanceId,
+          driverKind: driver,
+          displayName: "Work Codex",
+          usage: { getSnapshot: Effect.succeed(ready), refresh },
+        },
+      ] as unknown as ReadonlyArray<ProviderInstance>),
+      streamChanges: Stream.never,
+      subscribeChanges: PubSub.subscribe(changes),
+    } as unknown as ProviderInstanceRegistryShape;
+
+    const registry = yield* makeProviderUsageRegistry(instances);
+    yield* Effect.yieldNow;
+    const first = yield* registry.refresh({ instanceId }).pipe(Effect.forkChild);
+    const second = yield* registry.refresh({ instanceId }).pipe(Effect.forkChild);
+    yield* Effect.yieldNow;
+
+    assert.strictEqual(yield* Ref.get(maximumActive), 1);
+    yield* Deferred.succeed(gate, undefined);
+    yield* Fiber.join(first);
+    yield* Fiber.join(second);
+  }),
+);

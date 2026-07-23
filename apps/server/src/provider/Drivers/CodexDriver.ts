@@ -174,6 +174,7 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv> = {
         instanceId,
         driver: DRIVER_KIND,
         displayName: displayName ?? "Codex",
+        minimumRefreshInterval: "60 seconds",
         load: makeCodexUsageSource({
           config: effectiveConfig,
           cwd,

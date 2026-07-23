@@ -8,6 +8,7 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
+import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import type * as Scope from "effect/Scope";
@@ -64,8 +65,9 @@ export const makeProviderUsageRegistry = Effect.fn("makeProviderUsageRegistry")(
     snapshots: initialSnapshots,
   });
   const initialState = yield* SubscriptionRef.get(state);
+  const collectLock = yield* Semaphore.make(1);
 
-  const collect = (options?: {
+  const collectUnlocked = (options?: {
     readonly refresh?: boolean;
     readonly instanceId?: ProviderInstanceId;
   }) =>
@@ -105,6 +107,10 @@ export const makeProviderUsageRegistry = Effect.fn("makeProviderUsageRegistry")(
       yield* SubscriptionRef.set(state, result);
       return result;
     });
+  const collect = (options?: {
+    readonly refresh?: boolean;
+    readonly instanceId?: ProviderInstanceId;
+  }) => collectLock.withPermit(collectUnlocked(options));
 
   const getSnapshotList = SubscriptionRef.get(state);
   const refresh = (input?: ProviderUsageRefreshInput) =>
