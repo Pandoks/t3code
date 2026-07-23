@@ -10,7 +10,7 @@ export function normalizeUsageWindow(input: {
   readonly id: string;
   readonly label: string;
   readonly usedPercent: number;
-  readonly resetsAtEpochSeconds: number;
+  readonly resetsAtEpochSeconds: number | null;
   readonly windowDurationMinutes: number;
   readonly reservePercent?: number;
 }): ProviderUsageWindow {
@@ -20,7 +20,10 @@ export function normalizeUsageWindow(input: {
     label: input.label,
     usedPercent,
     remainingPercent: normalizeUsagePercent(100 - usedPercent),
-    resetsAt: DateTime.formatIso(DateTime.makeUnsafe(input.resetsAtEpochSeconds * 1_000)),
+    resetsAt:
+      input.resetsAtEpochSeconds === null
+        ? null
+        : DateTime.formatIso(DateTime.makeUnsafe(input.resetsAtEpochSeconds * 1_000)),
     windowDurationMinutes: input.windowDurationMinutes,
     ...(input.reservePercent === undefined
       ? {}

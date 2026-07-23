@@ -38,4 +38,35 @@ describe("Claude OAuth usage", () => {
     expect(result.headlineWindowId).toBe("weekly");
     expect(result.windows.map((window) => window.id)).toEqual(["weekly"]);
   });
+
+  it("preserves live session and routines windows when reset details are unavailable", () => {
+    const result = parseClaudeOAuthUsage({
+      five_hour: { utilization: 0, resets_at: null },
+      seven_day: { utilization: 34, resets_at: "2026-07-26T05:59:59Z" },
+      seven_day_cowork: null,
+      limits: [
+        {
+          kind: "weekly_scoped",
+          percent: 61,
+          resets_at: "2026-07-26T05:59:59Z",
+          scope: { model: { display_name: "Fable" } },
+        },
+      ],
+    });
+
+    expect(result.headlineWindowId).toBe("session");
+    expect(
+      result.windows.map(({ id, label, remainingPercent, resetsAt }) => [
+        id,
+        label,
+        remainingPercent,
+        resetsAt,
+      ]),
+    ).toEqual([
+      ["session", "Session", 100, null],
+      ["weekly", "Weekly", 66, "2026-07-26T05:59:59.000Z"],
+      ["routines", "Daily Routines", 100, null],
+      ["weekly-fable", "Fable only", 39, "2026-07-26T05:59:59.000Z"],
+    ]);
+  });
 });

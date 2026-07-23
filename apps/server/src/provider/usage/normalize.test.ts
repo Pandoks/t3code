@@ -27,4 +27,16 @@ describe("provider usage normalization", () => {
       windowDurationMinutes: 300,
     });
   });
+
+  it("preserves a missing reset timestamp", () => {
+    expect(
+      normalizeUsageWindow({
+        id: "session",
+        label: "Session",
+        usedPercent: 0,
+        resetsAtEpochSeconds: null,
+        windowDurationMinutes: 300,
+      }).resetsAt,
+    ).toBeNull();
+  });
 });

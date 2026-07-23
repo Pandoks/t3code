@@ -66,6 +66,15 @@ describe("ProviderUsageSnapshot", () => {
     expect(parsed.history?.topModel).toBe("gpt-5.6");
   });
 
+  it("decodes quota windows without a provider reset timestamp", () => {
+    const parsed = decodeProviderUsageSnapshot({
+      ...availableSnapshotInput,
+      windows: [{ ...availableSnapshotInput.windows[0], resetsAt: null }],
+    });
+
+    expect(parsed.windows[0]?.resetsAt).toBeNull();
+  });
+
   it("decodes an initial unavailable snapshot without fabricated successful state", () => {
     const parsed = decodeProviderUsageSnapshotList({
       snapshots: [

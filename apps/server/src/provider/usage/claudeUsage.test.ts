@@ -44,7 +44,7 @@ describe("Claude native usage", () => {
         windowDurationMinutes: 10_080,
       },
     ]);
-    expect(parsed.windows.every((window) => window.resetsAt.includes("T"))).toBe(true);
+    expect(parsed.windows.every((window) => window.resetsAt?.includes("T") === true)).toBe(true);
   });
 
   it("reconstructs the terminal screen from cursor-positioned ANSI updates", () => {

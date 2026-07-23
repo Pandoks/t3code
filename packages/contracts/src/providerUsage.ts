@@ -18,7 +18,7 @@ export const ProviderUsageWindow = Schema.Struct({
   label: Schema.String,
   usedPercent: Schema.Number,
   remainingPercent: Schema.Number,
-  resetsAt: IsoDateTimeString,
+  resetsAt: Schema.NullOr(IsoDateTimeString),
   windowDurationMinutes: Schema.Number,
   reservePercent: Schema.optional(Schema.Number),
 });

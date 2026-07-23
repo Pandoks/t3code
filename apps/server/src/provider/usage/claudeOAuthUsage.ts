@@ -25,16 +25,22 @@ export function parseClaudeOAuthUsage(payload: unknown): ProviderUsageSnapshotDr
   const windows: ProviderUsageWindow[] = [];
   appendWindow(windows, root.five_hour, "session", "Session", 300);
   appendWindow(windows, root.seven_day, "weekly", "Weekly", WEEKLY_MINUTES);
-  for (const key of [
-    "seven_day_routines",
-    "seven_day_claude_routines",
-    "claude_routines",
+  appendFirstKnownWindow(
+    windows,
+    root,
+    [
+      "seven_day_routines",
+      "seven_day_claude_routines",
+      "claude_routines",
+      "routines",
+      "routine",
+      "seven_day_cowork",
+      "cowork",
+    ],
     "routines",
-  ]) {
-    if (!Object.hasOwn(root, key)) continue;
-    appendWindow(windows, root[key], "routines", "Daily Routines", WEEKLY_MINUTES);
-    break;
-  }
+    "Daily Routines",
+    WEEKLY_MINUTES,
+  );
   if (Array.isArray(root.limits)) {
     for (const value of root.limits) {
       const limit = asRecord(value);
@@ -156,7 +162,7 @@ function appendWindow(
   const record = asRecord(value);
   const usedPercent = numberValue(record.utilization);
   const resetsAt = dateSeconds(record.resets_at);
-  if (usedPercent === null || resetsAt === null) return;
+  if (usedPercent === null) return;
   windows.push(
     normalizeUsageWindow({
       id,
@@ -166,6 +172,35 @@ function appendWindow(
       windowDurationMinutes,
     }),
   );
+}
+
+function appendFirstKnownWindow(
+  windows: ProviderUsageWindow[],
+  root: Record<string, unknown>,
+  keys: ReadonlyArray<string>,
+  id: string,
+  label: string,
+  windowDurationMinutes: number,
+): void {
+  let knownKeyPresent = false;
+  for (const key of keys) {
+    if (!Object.hasOwn(root, key)) continue;
+    knownKeyPresent = true;
+    const before = windows.length;
+    appendWindow(windows, root[key], id, label, windowDurationMinutes);
+    if (windows.length > before) return;
+  }
+  if (knownKeyPresent) {
+    windows.push(
+      normalizeUsageWindow({
+        id,
+        label,
+        usedPercent: 0,
+        resetsAtEpochSeconds: null,
+        windowDurationMinutes,
+      }),
+    );
+  }
 }
 
 function dateSeconds(value: unknown): number | null {
