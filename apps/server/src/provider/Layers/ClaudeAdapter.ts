@@ -222,6 +222,7 @@ export interface ClaudeAdapterLiveOptions {
   }) => ClaudeQueryRuntime;
   readonly nativeEventLogPath?: string;
   readonly nativeEventLogger?: EventNdjsonLogger;
+  readonly onRateLimitsUpdated?: (payload: unknown) => Effect.Effect<void>;
 }
 
 function isUuid(value: string): boolean {
@@ -2904,6 +2905,9 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     }
 
     if (message.type === "rate_limit_event") {
+      if (options?.onRateLimitsUpdated) {
+        yield* options.onRateLimitsUpdated(message);
+      }
       yield* offerRuntimeEvent({
         ...base,
         type: "account.rate-limits.updated",

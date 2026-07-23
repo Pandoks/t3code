@@ -88,7 +88,7 @@ import {
   renderProviderTraitsMenuContent,
   renderProviderTraitsPicker,
 } from "./composerProviderState";
-import { ContextWindowMeter } from "./ContextWindowMeter";
+import { ComposerFooterUsageIndicators } from "./providerUsage/ComposerFooterUsageIndicators";
 import { buildExpandedImagePreview, type ExpandedImagePreview } from "./ExpandedImagePreview";
 import { basenameOfPath } from "../../pierre-icons";
 import { cn, randomUUID } from "~/lib/utils";
@@ -345,6 +345,10 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
 });
 
 const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(props: {
+  environmentId: EnvironmentId;
+  activeProviderInstanceId: ProviderInstanceId;
+  activeProviderDriver: ProviderDriverKind;
+  activeProviderDisplayName: string;
   compact: boolean;
   activeContextWindow: ReturnType<typeof deriveLatestContextWindowSnapshot>;
   activeThreadProviderDisplayName: string | null;
@@ -370,12 +374,14 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
 }) {
   return (
     <>
-      {props.activeContextWindow ? (
-        <ContextWindowMeter
-          usage={props.activeContextWindow}
-          providerDisplayName={props.activeThreadProviderDisplayName}
-        />
-      ) : null}
+      <ComposerFooterUsageIndicators
+        environmentId={props.environmentId}
+        activeProviderInstanceId={props.activeProviderInstanceId}
+        activeProviderDriver={props.activeProviderDriver}
+        activeProviderDisplayName={props.activeProviderDisplayName}
+        activeContextWindow={props.activeContextWindow}
+        activeThreadProviderDisplayName={props.activeThreadProviderDisplayName}
+      />
       {props.isPreparingWorktree ? (
         <span className="text-muted-foreground/70 text-xs">Preparing worktree...</span>
       ) : null}
@@ -2665,6 +2671,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 className="flex shrink-0 flex-nowrap items-center justify-end gap-2"
               >
                 <ComposerFooterPrimaryActions
+                  environmentId={environmentId}
+                  activeProviderInstanceId={selectedInstanceId}
+                  activeProviderDriver={selectedProvider}
+                  activeProviderDisplayName={
+                    selectedProviderEntry?.displayName ??
+                    getProviderDisplayName(providerStatuses, selectedProvider)
+                  }
                   compact={isComposerPrimaryActionsCompact}
                   activeContextWindow={activeContextWindow}
                   activeThreadProviderDisplayName={activeThreadProviderDisplayName}
