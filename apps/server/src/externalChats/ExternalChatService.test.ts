@@ -326,8 +326,14 @@ it.layer(testLayer)("ExternalChatService", (it) => {
         },
       });
       const listed = yield* service.refresh({ sources: ["codex"] });
-      const isolatedCandidates = listed.candidates.filter((candidate) =>
-        candidate.providerInstanceId.startsWith("codex_isolated_"),
+      const isolatedProviderInstanceIds = new Set([
+        ProviderInstanceId.make("codex_isolated_a"),
+        ProviderInstanceId.make("codex_isolated_b"),
+      ]);
+      const isolatedCandidates = listed.candidates.filter(
+        (candidate) =>
+          candidate.nativeSessionId === "codex-session-alpha" &&
+          isolatedProviderInstanceIds.has(candidate.providerInstanceId),
       );
       expect(isolatedCandidates).toHaveLength(2);
       const imported = yield* service.import({
