@@ -35,12 +35,20 @@ export function parseCodexOAuthUsage(payload: unknown): ProviderUsageSnapshotDra
       );
     }
   }
-  appendRateWindow(
-    windows,
-    asRecord(root.code_review_rate_limit).primary_window,
-    "code-review",
-    "Code review",
-  );
+  const codeReviewWindow = asRecord(root.code_review_rate_limit).primary_window;
+  if (Object.keys(asRecord(codeReviewWindow)).length > 0) {
+    appendRateWindow(windows, codeReviewWindow, "code-review", "Code review");
+  } else {
+    windows.push({
+      id: "code-review",
+      label: "Code review",
+      usedPercent: 0,
+      remainingPercent: 0,
+      resetsAt: null,
+      windowDurationMinutes: 0,
+      unavailable: true,
+    });
+  }
   const deduplicated = deduplicate(windows);
   const planType = typeof root.plan_type === "string" ? root.plan_type.trim() : "";
   return {
@@ -102,7 +110,9 @@ export function makeCodexOAuthUsageSource(input: {
     const tokens = asRecord(auth.tokens);
     const accessToken = tokens.access_token ?? auth.access_token;
     if (typeof accessToken !== "string" || accessToken.length === 0) {
-      return yield* new CodexOAuthUsageError({ cause: "credentials unavailable" });
+      return yield* new CodexOAuthUsageError({
+        cause: "credentials unavailable",
+      });
     }
     const request = HttpClientRequest.get("https://chatgpt.com/backend-api/wham/usage").pipe(
       HttpClientRequest.bearerToken(accessToken),
@@ -113,7 +123,9 @@ export function makeCodexOAuthUsageSource(input: {
       Effect.mapError((cause) => new CodexOAuthUsageError({ cause })),
     );
     if (response.status < 200 || response.status >= 300) {
-      return yield* new CodexOAuthUsageError({ cause: `HTTP ${response.status}` });
+      return yield* new CodexOAuthUsageError({
+        cause: `HTTP ${response.status}`,
+      });
     }
     const payload = yield* response.json.pipe(
       Effect.mapError((cause) => new CodexOAuthUsageError({ cause })),

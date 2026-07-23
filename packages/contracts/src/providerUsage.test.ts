@@ -35,6 +35,7 @@ const availableSnapshotInput = {
       resetsAt: "2026-07-22T15:00:00.000Z",
       windowDurationMinutes: 300,
       reservePercent: 10,
+      unavailable: false,
     },
   ],
   history: {
@@ -61,6 +62,7 @@ describe("ProviderUsageSnapshot", () => {
     const parsed = decodeProviderUsageSnapshot(availableSnapshotInput);
 
     expect(parsed.windows[0]?.reservePercent).toBe(10);
+    expect(parsed.windows[0]?.unavailable).toBe(false);
     expect(parsed.checkedAt).toBe("2026-07-22T12:00:00.000Z");
     expect(parsed.windows[0]?.resetsAt).toBe("2026-07-22T15:00:00.000Z");
     expect(parsed.history?.daily[0]?.estimatedCostUsd).toBeNull();

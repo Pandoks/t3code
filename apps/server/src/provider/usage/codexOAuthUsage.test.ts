@@ -44,7 +44,7 @@ describe("Codex OAuth usage", () => {
     expect(result.planLabel).toBe("Pro");
   });
 
-  it("omits a nullable Code review limit", () => {
+  it("keeps an unavailable Code review row when the native API returns null", () => {
     const result = parseCodexOAuthUsage({
       rate_limit: {
         secondary_window: {
@@ -56,7 +56,11 @@ describe("Codex OAuth usage", () => {
       code_review_rate_limit: null,
     });
 
-    expect(result.windows.map((window) => window.id)).toEqual(["weekly"]);
+    expect(result.windows.map((window) => window.id)).toEqual(["weekly", "code-review"]);
+    expect(result.windows[1]).toMatchObject({
+      label: "Code review",
+      unavailable: true,
+    });
   });
 
   it("enriches app-server windows without duplicating semantic limits", () => {

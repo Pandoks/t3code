@@ -21,6 +21,7 @@ export const ProviderUsageWindow = Schema.Struct({
   resetsAt: Schema.NullOr(IsoDateTimeString),
   windowDurationMinutes: Schema.Number,
   reservePercent: Schema.optional(Schema.Number),
+  unavailable: Schema.optional(Schema.Boolean),
 });
 export type ProviderUsageWindow = typeof ProviderUsageWindow.Type;
 
