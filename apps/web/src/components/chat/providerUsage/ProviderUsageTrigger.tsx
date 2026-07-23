@@ -29,15 +29,13 @@ export function ProviderUsageTrigger({
       {...buttonProps}
       type="button"
       size="icon-xs"
-      variant="outline"
+      variant="ghost"
       aria-label={`${providerDisplayName} provider usage`}
       aria-expanded={expanded}
-      className="size-6 hover:opacity-90 data-pressed:opacity-80 sm:size-6"
+      className="size-6 rounded-full hover:bg-accent data-pressed:bg-accent sm:size-6"
       style={{
         ...style,
         color: providerColor,
-        borderColor: providerColor,
-        backgroundColor: `color-mix(in oklab, ${providerColor} 10%, transparent)`,
       }}
     >
       <svg

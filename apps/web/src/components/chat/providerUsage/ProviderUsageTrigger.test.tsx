@@ -19,6 +19,11 @@ describe("ProviderUsageTrigger", () => {
     expect(markup).toContain('aria-expanded="false"');
     expect(markup).toContain("size-6");
     expect(markup).toContain("#49A3B0");
+    expect(markup).toContain("border-transparent");
+    expect(markup).toContain("hover:bg-accent");
+    expect(markup).toContain("rounded-full");
+    expect(markup).not.toContain("border-color");
+    expect(markup).not.toContain("background-color");
     expect(markup).toContain('data-provider-usage-glyph="true"');
     expect(markup).toContain('data-provider-usage-track="primary"');
     expect(markup).toContain('data-provider-usage-fill="primary"');
