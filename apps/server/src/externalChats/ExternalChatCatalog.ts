@@ -78,6 +78,7 @@ interface ParsedTranscript {
   readonly hasNativeMetadata: boolean;
   readonly isSidechain: boolean;
   readonly isSubagent: boolean;
+  readonly isTeammateAgent: boolean;
   readonly lastAssistantUuid?: string;
 }
 
@@ -581,6 +582,7 @@ const parseCodexTranscript = (contents: string, sourceFile: string): ParsedTrans
     hasNativeMetadata,
     isSidechain: false,
     isSubagent,
+    isTeammateAgent: false,
   };
 };
 
@@ -594,6 +596,9 @@ const claudeHiddenRecordTypes = new Set([
   "last-prompt",
   "summary",
 ]);
+
+const isClaudeTeammatePrompt = (text: string): boolean =>
+  /^<teammate-message(?=[\s>])[^>]*\bteammate_id=(?:"[^"]+"|'[^']+')[^>]*>/u.test(text.trimStart());
 
 const claudePlanText = (input: JsonRecord): string => {
   if (Array.isArray(input.todos)) {
@@ -619,6 +624,8 @@ const parseClaudeTranscript = (contents: string, sourceFile: string): ParsedTran
   let title: string | undefined;
   let hasNativeMetadata = false;
   let isSidechain = false;
+  let isTeammateAgent = false;
+  let hasSeenUserText = false;
   let lastAssistantUuid: string | undefined;
 
   for (const line of parsed.lines) {
@@ -641,14 +648,12 @@ const parseClaudeTranscript = (contents: string, sourceFile: string): ParsedTran
       const message = asRecord(line.record.message);
       const content = message?.content;
       if (type === "user") {
-        pushMessage(
-          events,
-          seenMessages,
-          line.line,
-          line.timestamp,
-          "user",
-          textFromContent(content),
-        );
+        const userText = textFromContent(content);
+        if (userText && !hasSeenUserText) {
+          hasSeenUserText = true;
+          isTeammateAgent = isClaudeTeammatePrompt(userText);
+        }
+        pushMessage(events, seenMessages, line.line, line.timestamp, "user", userText);
       } else {
         lastAssistantUuid = asString(line.record.uuid) ?? lastAssistantUuid;
         pushMessage(
@@ -798,6 +803,7 @@ const parseClaudeTranscript = (contents: string, sourceFile: string): ParsedTran
     hasNativeMetadata,
     isSidechain,
     isSubagent: false,
+    isTeammateAgent,
     ...(lastAssistantUuid ? { lastAssistantUuid } : {}),
   };
 };
@@ -932,7 +938,7 @@ const scanSource = Effect.fn("ExternalChatCatalog.scanSource")(function* (
         ? parseCodexTranscript(contents, sourceFile)
         : parseClaudeTranscript(contents, sourceFile);
     if (
-      (source === "claude" && parsed.isSidechain) ||
+      (source === "claude" && (parsed.isSidechain || parsed.isTeammateAgent)) ||
       (source === "codex" && (parsed.isSubagent || parsed.parentThreadId))
     ) {
       continue;

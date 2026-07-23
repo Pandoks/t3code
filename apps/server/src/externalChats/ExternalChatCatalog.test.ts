@@ -278,6 +278,9 @@ describe("external native chat catalog", () => {
       expect(sessions.map((session) => session.candidate.nativeSessionId)).toEqual([
         "8dcd1b39-8e74-41f0-a07c-b876917a46c4",
       ]);
+      expect(sessions.map((session) => session.candidate.nativeSessionId)).not.toContain(
+        "5f482086-5420-4ff7-b81e-7fb2b8df8969",
+      );
       expect(sessions[0]?.events).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ type: "message", text: "Add import support" }),

@@ -1,0 +1,3 @@
+{"type":"mode","sessionId":"5f482086-5420-4ff7-b81e-7fb2b8df8969"}
+{"type":"user","uuid":"teammate-user","sessionId":"5f482086-5420-4ff7-b81e-7fb2b8df8969","timestamp":"2026-07-20T12:30:00.000Z","cwd":"/workspace/beta","isSidechain":false,"teamName":"session-fixture","message":{"role":"user","content":"<teammate-message teammate_id=\"team-lead\">\nReview the parent task.\n</teammate-message>"}}
+{"type":"assistant","uuid":"teammate-assistant","sessionId":"5f482086-5420-4ff7-b81e-7fb2b8df8969","timestamp":"2026-07-20T12:30:01.000Z","cwd":"/workspace/beta","isSidechain":false,"teamName":"session-fixture","message":{"role":"assistant","content":[{"type":"text","text":"Review complete."}],"stop_reason":"end_turn"}}

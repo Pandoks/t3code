@@ -87,3 +87,44 @@ Result: all exited 0; formatting matched, lint was clean, and the diff had no wh
 ## Remaining integration gate
 
 Per repository instructions, this subagent did not launch a web dev server. The primary agent owns the single integrated `test-t3-app` verification pass for this user-visible dialog change after integrating the commit.
+
+## Follow-up: Claude teammate-agent transcripts
+
+The final native review found Claude teammate agents stored at the project-session level with `isSidechain: false`. Their first textual user record is an attribute-bearing envelope such as `<teammate-message teammate_id="team-lead">`, so sidechain and directory filtering alone did not identify them.
+
+RED fixture command:
+
+```text
+pnpm exec vp test run apps/server/src/externalChats/ExternalChatCatalog.test.ts
+```
+
+Result: exit 1; 3 tests failed and 5 passed. The teammate fixture became a resumable catalog candidate titled `<teammate-message teammate_id="team-lead">`, while the expected top-level Claude session remained present.
+
+Implementation: the Claude parser now classifies a transcript as a teammate agent only when its first textual user record begins with a `teammate-message` opening tag containing a quoted `teammate_id` attribute. The scanner excludes that transcript as a subagent. This does not classify a genuine top-level chat merely because a teammate message appears later in its history.
+
+GREEN focused tests:
+
+```text
+pnpm exec vp test run apps/server/src/externalChats/ExternalChatCatalog.test.ts apps/server/src/externalChats/ExternalChatService.test.ts
+```
+
+Result: exit 0; 2 files passed, 14 tests passed.
+
+GREEN read-only native audit:
+
+```text
+pnpm exec vp test run apps/server/src/externalChats/ExternalChatCatalog.native-audit.test.ts
+```
+
+Result: exit 0; 1 test passed. The temporary audit asserted that the actual Claude catalog returned zero titles beginning with an attribute-bearing teammate envelope; the audit file was removed after the run and native files were only read.
+
+Follow-up static verification:
+
+```text
+pnpm exec vp run --filter t3 typecheck
+pnpm exec vp fmt --check apps/server/src/externalChats/ExternalChatCatalog.ts apps/server/src/externalChats/ExternalChatCatalog.test.ts
+pnpm exec vp lint --report-unused-disable-directives apps/server/src/externalChats/ExternalChatCatalog.ts apps/server/src/externalChats/ExternalChatCatalog.test.ts
+git diff --check
+```
+
+Result: all exited 0. Typecheck retained the same three pre-existing suggestions in `src/orchestration/decider.ts`; no type errors.
