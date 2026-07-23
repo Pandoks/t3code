@@ -170,43 +170,30 @@ export function ProviderUsageDashboard(props: {
         <section className="mt-4 space-y-3" aria-label="Quota windows">
           {windows.map((window) => {
             const remaining = Math.max(0, Math.min(100, window.remainingPercent));
-            const unavailable = window.unavailable === true;
             return (
               <div key={window.id}>
                 <div className="mb-1.5 flex items-center justify-between gap-3 text-xs">
                   <span className="font-medium">{window.label}</span>
                   <span className="tabular-nums text-muted-foreground">
-                    {unavailable
-                      ? "Unavailable"
-                      : `${formatProviderUsagePercent(window.remainingPercent)} left`}
+                    {formatProviderUsagePercent(window.remainingPercent)} left
                   </span>
                 </div>
                 <div
-                  {...(unavailable
-                    ? { "aria-label": `${window.label} unavailable` }
-                    : {
-                        role: "progressbar",
-                        "aria-label": `${window.label} remaining`,
-                        "aria-valuemin": 0,
-                        "aria-valuemax": 100,
-                        "aria-valuenow": Math.round(remaining),
-                      })}
+                  role="progressbar"
+                  aria-label={`${window.label} remaining`}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={Math.round(remaining)}
                   className="h-1.5 overflow-hidden rounded-full bg-muted"
                 >
-                  {unavailable ? null : (
-                    <div
-                      className="h-full rounded-full transition-[width] duration-300 motion-reduce:transition-none"
-                      style={{ width: `${remaining}%`, backgroundColor: color }}
-                    />
-                  )}
+                  <div
+                    className="h-full rounded-full transition-[width] duration-300 motion-reduce:transition-none"
+                    style={{ width: `${remaining}%`, backgroundColor: color }}
+                  />
                 </div>
                 <div className="mt-1 flex justify-between text-[10px] text-muted-foreground/70">
-                  <span>
-                    {unavailable
-                      ? "Requires an authenticated ChatGPT analytics session"
-                      : formatProviderUsageReset(window.resetsAt, now)}
-                  </span>
-                  {!unavailable && window.reservePercent !== undefined ? (
+                  <span>{formatProviderUsageReset(window.resetsAt, now)}</span>
+                  {window.reservePercent !== undefined ? (
                     <span>{window.reservePercent}% reserve</span>
                   ) : null}
                 </div>

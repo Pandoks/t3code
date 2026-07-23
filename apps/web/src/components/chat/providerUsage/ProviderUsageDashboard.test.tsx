@@ -197,36 +197,6 @@ describe("ProviderUsageDashboard", () => {
     expect(claudeMarkup).not.toContain("rounded-lg bg-muted/35");
   });
 
-  it("renders unavailable quota rows without fabricating a percentage", () => {
-    const markup = renderToStaticMarkup(
-      <ProviderUsageDashboard
-        snapshots={[
-          snapshot({
-            windows: [
-              {
-                id: "code-review",
-                label: "Code review",
-                usedPercent: 0,
-                remainingPercent: 0,
-                resetsAt: null,
-                windowDurationMinutes: 0,
-                unavailable: true,
-              },
-            ],
-          }),
-        ]}
-        selectedInstanceId={ProviderInstanceId.make("codex-default")}
-        onSelectInstance={vi.fn()}
-        onRefresh={vi.fn()}
-      />,
-    );
-
-    expect(markup).toContain("Code review");
-    expect(markup).toContain("Unavailable");
-    expect(markup).not.toContain("0% left");
-    expect(markup).not.toContain('aria-valuenow="0"');
-  });
-
   it("reports freshness from the last successful usage snapshot", () => {
     const markup = renderToStaticMarkup(
       <ProviderUsageDashboard

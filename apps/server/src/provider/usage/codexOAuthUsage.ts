@@ -35,20 +35,12 @@ export function parseCodexOAuthUsage(payload: unknown): ProviderUsageSnapshotDra
       );
     }
   }
-  const codeReviewWindow = asRecord(root.code_review_rate_limit).primary_window;
-  if (Object.keys(asRecord(codeReviewWindow)).length > 0) {
-    appendRateWindow(windows, codeReviewWindow, "code-review", "Code review");
-  } else {
-    windows.push({
-      id: "code-review",
-      label: "Code review",
-      usedPercent: 0,
-      remainingPercent: 0,
-      resetsAt: null,
-      windowDurationMinutes: 0,
-      unavailable: true,
-    });
-  }
+  appendRateWindow(
+    windows,
+    asRecord(root.code_review_rate_limit).primary_window,
+    "code-review",
+    "Code review",
+  );
   const deduplicated = deduplicate(windows);
   const planType = typeof root.plan_type === "string" ? root.plan_type.trim() : "";
   return {
