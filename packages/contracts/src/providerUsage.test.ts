@@ -22,6 +22,7 @@ const availableSnapshotInput = {
   driver: "codex",
   displayName: "Personal Codex",
   status: "ready",
+  planLabel: "Pro",
   checkedAt: "2026-07-22T12:00:00.000Z",
   lastSuccessfulAt: "2026-07-22T11:59:59.000Z",
   headlineWindowId: "five-hour",
@@ -64,6 +65,7 @@ describe("ProviderUsageSnapshot", () => {
     expect(parsed.windows[0]?.resetsAt).toBe("2026-07-22T15:00:00.000Z");
     expect(parsed.history?.daily[0]?.estimatedCostUsd).toBeNull();
     expect(parsed.history?.topModel).toBe("gpt-5.6");
+    expect(parsed.planLabel).toBe("Pro");
   });
 
   it("decodes quota windows without a provider reset timestamp", () => {

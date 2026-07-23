@@ -5,6 +5,7 @@ import { mergeCodexUsageDrafts, parseCodexOAuthUsage } from "./codexOAuthUsage.t
 describe("Codex OAuth usage", () => {
   it("normalizes weekly, Spark, and Code review windows", () => {
     const result = parseCodexOAuthUsage({
+      plan_type: "pro",
       rate_limit: {
         secondary_window: {
           used_percent: 54,
@@ -40,6 +41,7 @@ describe("Codex OAuth usage", () => {
       ["spark-weekly", "Codex Spark Weekly", 100],
       ["code-review", "Code review", 47],
     ]);
+    expect(result.planLabel).toBe("Pro");
   });
 
   it("omits a nullable Code review limit", () => {

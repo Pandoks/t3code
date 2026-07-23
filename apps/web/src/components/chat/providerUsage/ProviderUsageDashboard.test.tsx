@@ -13,6 +13,7 @@ const snapshot = (overrides: Partial<ProviderUsageDashboardSnapshot> = {}) =>
     driver: ProviderDriverKind.make("codex"),
     displayName: "Codex",
     status: "ready" as const,
+    planLabel: "Pro",
     checkedAt: "2026-07-22T12:00:00.000Z",
     lastSuccessfulAt: "2026-07-22T12:00:00.000Z",
     headlineWindowId: "session",
@@ -93,6 +94,7 @@ describe("ProviderUsageDashboard", () => {
     expect(markup).toContain("gpt-5.4");
     expect(markup).toContain("#49A3B0");
     expect(markup).toContain("Refresh Codex usage");
+    expect(markup).toContain("Pro");
     expect(markup).toContain('role="tablist" aria-label="Provider usage accounts"');
     const tabId = markup.match(/role="tab"[^>]*id="([^"]+)"[^>]*aria-controls=/)?.[1];
     const panelId = markup.match(/aria-controls="([^"]+)"/)?.[1];

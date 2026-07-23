@@ -42,7 +42,12 @@ export function parseCodexOAuthUsage(payload: unknown): ProviderUsageSnapshotDra
     "Code review",
   );
   const deduplicated = deduplicate(windows);
-  return { headlineWindowId: deduplicated[0]?.id ?? null, windows: deduplicated };
+  const planType = typeof root.plan_type === "string" ? root.plan_type.trim() : "";
+  return {
+    ...(planType ? { planLabel: titleCase(planType) } : {}),
+    headlineWindowId: deduplicated[0]?.id ?? null,
+    windows: deduplicated,
+  };
 }
 
 function appendMainWindow(
@@ -63,12 +68,17 @@ export function mergeCodexUsageDrafts(
   const enrichmentLabels = new Set(enrichment.windows.map((window) => window.label.toLowerCase()));
   return {
     ...base,
+    ...(enrichment.planLabel ? { planLabel: enrichment.planLabel } : {}),
     headlineWindowId: enrichment.headlineWindowId ?? base.headlineWindowId,
     windows: [
       ...enrichment.windows,
       ...base.windows.filter((window) => !enrichmentLabels.has(window.label.toLowerCase())),
     ],
   };
+}
+
+function titleCase(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
 }
 
 export function makeCodexOAuthUsageSource(input: {

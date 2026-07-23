@@ -124,10 +124,11 @@ export function ProviderUsageDashboard(props: {
           </span>
           <div className="min-w-0 flex-1">
             <div className="truncate font-medium text-sm">{selected.displayName}</div>
-            <div className="mt-0.5 text-muted-foreground text-xs">
+            <div className="mt-0.5 flex items-center gap-2 text-muted-foreground text-xs">
               {selected.status === "unavailable" || selected.status === "error"
                 ? "Usage unavailable"
                 : `Updated ${formatProviderUsageRelativeTime(selected.lastSuccessfulAt, now)}`}
+              {selected.planLabel ? <span>{selected.planLabel}</span> : null}
             </div>
           </div>
           <Button

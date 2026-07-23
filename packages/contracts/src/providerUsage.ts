@@ -57,6 +57,7 @@ export const ProviderUsageSnapshot = Schema.Struct({
   instanceId: ProviderInstanceId,
   driver: ProviderDriverKind,
   displayName: Schema.String,
+  planLabel: Schema.optional(TrimmedNonEmptyString),
   status: ProviderUsageStatus,
   checkedAt: IsoDateTimeString,
   lastSuccessfulAt: Schema.NullOr(IsoDateTimeString),
