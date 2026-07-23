@@ -7,6 +7,7 @@ import {
   DownloadIcon,
   LoaderIcon,
   PlusIcon,
+  Settings2Icon,
   Trash2Icon,
   XIcon,
 } from "lucide-react";
@@ -16,6 +17,7 @@ import { useState, type ReactNode } from "react";
 import {
   isProviderDriverKind,
   type ProviderInstanceConfig,
+  type EnvironmentId,
   type ProviderInstanceEnvironmentVariable,
   type ProviderInstanceId,
   type ProviderDriverKind,
@@ -43,6 +45,7 @@ import { ProviderModelsSection } from "./ProviderModelsSection";
 import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
 import { ProviderAccentColorPicker } from "./ProviderAccentColorPicker";
 import { RedactedSensitiveText } from "./RedactedSensitiveText";
+import { ProviderConfigurationDialog } from "./ProviderConfigurationDialog";
 import {
   getProviderVersionAdvisoryPresentation,
   PROVIDER_STATUS_STYLES,
@@ -319,6 +322,7 @@ function ProviderEnvironmentSection(props: {
 }
 
 interface ProviderInstanceCardProps {
+  readonly environmentId?: EnvironmentId | undefined;
   readonly instanceId: ProviderInstanceId;
   readonly instance: ProviderInstanceConfig;
   readonly driverOption: DriverOption | undefined;
@@ -376,6 +380,7 @@ interface ProviderInstanceCardProps {
  *     flows through the envelope.
  */
 export function ProviderInstanceCard({
+  environmentId,
   instanceId,
   instance,
   driverOption,
@@ -394,6 +399,7 @@ export function ProviderInstanceCard({
   onRunUpdate,
   isUpdating = false,
 }: ProviderInstanceCardProps) {
+  const [isConfigurationOpen, setIsConfigurationOpen] = useState(false);
   const enabled = instance.enabled ?? true;
   // The server-reported status wins when present; otherwise fall back to
   // "disabled"/"warning" based on the local `enabled` flag so the dot
@@ -774,6 +780,28 @@ export function ProviderInstanceCard({
               />
             ) : null}
 
+            {environmentId && (instance.driver === "codex" || instance.driver === "claudeAgent") ? (
+              <div className="border-t border-border/60 px-4 py-3 sm:px-5">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-medium text-foreground">Provider configuration</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Manage native settings, instructions, MCP servers, and installed skills.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setIsConfigurationOpen(true)}
+                  >
+                    <Settings2Icon className="size-3.5" />
+                    Manage configuration
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+
             {driverOption !== undefined ? (
               <ProviderModelsSection
                 instanceId={instanceId}
@@ -801,6 +829,15 @@ export function ProviderInstanceCard({
           </div>
         </CollapsibleContent>
       </Collapsible>
+      {environmentId && isConfigurationOpen ? (
+        <ProviderConfigurationDialog
+          open
+          onOpenChange={setIsConfigurationOpen}
+          environmentId={environmentId}
+          instanceId={instanceId}
+          provider={instance.driver}
+        />
+      ) : null}
     </div>
   );
 }

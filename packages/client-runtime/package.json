@@ -83,6 +83,10 @@
       "types": "./src/state/providerUsage.ts",
       "default": "./src/state/providerUsage.ts"
     },
+    "./state/provider-configuration": {
+      "types": "./src/state/providerConfiguration.ts",
+      "default": "./src/state/providerConfiguration.ts"
+    },
     "./state/projects": {
       "types": "./src/state/projects.ts",
       "default": "./src/state/projects.ts"

@@ -8,6 +8,7 @@ import {
   Globe2Icon,
   LoaderIcon,
   SearchIcon,
+  SparklesIcon,
   SquarePenIcon,
   TerminalIcon,
   TriangleAlertIcon,
@@ -178,6 +179,7 @@ import {
 } from "./ui/sidebar";
 import { useThreadSelectionStore } from "../threadSelectionStore";
 import { openCommandPalette } from "../commandPaletteBus";
+import { openNewSkillDialog } from "../newSkillDialogBus";
 import {
   archiveSelectedThreadEntries,
   buildMultiSelectThreadContextMenuItems,
@@ -2950,6 +2952,21 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
               onThreadPreviewCountChange={handleThreadPreviewCountChange}
             />
             <ExternalChatImportSidebarAction tooltipSide="right" />
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    aria-label="New Skill"
+                    className="inline-flex h-6 min-w-6 cursor-pointer items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
+                    onClick={openNewSkillDialog}
+                  />
+                }
+              >
+                <SparklesIcon className="size-3.5" />
+              </TooltipTrigger>
+              <TooltipPopup side="right">New Skill</TooltipPopup>
+            </Tooltip>
             <Tooltip>
               <TooltipTrigger
                 render={

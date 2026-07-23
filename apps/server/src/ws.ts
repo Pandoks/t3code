@@ -9,6 +9,7 @@ import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
+import * as Path from "effect/Path";
 import {
   DEFAULT_AUTOMATIC_GIT_FETCH_INTERVAL,
   AuthOrchestrationOperateScope,
@@ -79,6 +80,7 @@ import {
 import * as ProviderRegistry from "./provider/Services/ProviderRegistry.ts";
 import * as ProviderUsageRegistry from "./provider/Services/ProviderUsageRegistry.ts";
 import * as ProviderMaintenanceRunner from "./provider/providerMaintenanceRunner.ts";
+import * as ProviderConfiguration from "./providerConfiguration/ProviderConfigurationService.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
 import * as ServerSettings from "./serverSettings.ts";
@@ -308,6 +310,11 @@ const RPC_REQUIRED_SCOPE = new Map<string, AuthEnvironmentScope>([
   [WS_METHODS.serverRemoveKeybinding, AuthOrchestrationOperateScope],
   [WS_METHODS.serverGetSettings, AuthOrchestrationReadScope],
   [WS_METHODS.serverUpdateSettings, AuthOrchestrationOperateScope],
+  [WS_METHODS.providerConfigurationGetSnapshot, AuthOrchestrationReadScope],
+  [WS_METHODS.providerConfigurationValidateDraft, AuthOrchestrationReadScope],
+  [WS_METHODS.providerConfigurationApplyDraft, AuthOrchestrationOperateScope],
+  [WS_METHODS.providerConfigurationRunSkillAction, AuthOrchestrationOperateScope],
+  [WS_METHODS.providerConfigurationInitializeSkill, AuthOrchestrationOperateScope],
   [WS_METHODS.serverDiscoverSourceControl, AuthOrchestrationReadScope],
   [WS_METHODS.serverGetTraceDiagnostics, AuthOrchestrationReadScope],
   [WS_METHODS.serverGetProcessDiagnostics, AuthOrchestrationReadScope],
@@ -431,6 +438,11 @@ const makeWsRpcLayer = (
       const config = yield* ServerConfig.ServerConfig;
       const lifecycleEvents = yield* ServerLifecycleEvents.ServerLifecycleEvents;
       const serverSettings = yield* ServerSettings.ServerSettingsService;
+      const providerConfiguration = ProviderConfiguration.makeProviderConfigurationService({
+        settingsService: serverSettings,
+        projects: projectionSnapshotQuery,
+        path: yield* Path.Path,
+      });
       const startup = yield* ServerRuntimeStartup.ServerRuntimeStartup;
       const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
       const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
@@ -1555,6 +1567,36 @@ const makeWsRpcLayer = (
             {
               "rpc.aggregate": "server",
             },
+          ),
+        [WS_METHODS.providerConfigurationGetSnapshot]: (request) =>
+          observeRpcEffect(
+            WS_METHODS.providerConfigurationGetSnapshot,
+            providerConfiguration.getSnapshot(request),
+            { "rpc.aggregate": "providerConfiguration" },
+          ),
+        [WS_METHODS.providerConfigurationValidateDraft]: (request) =>
+          observeRpcEffect(
+            WS_METHODS.providerConfigurationValidateDraft,
+            providerConfiguration.validateDraft(request),
+            { "rpc.aggregate": "providerConfiguration" },
+          ),
+        [WS_METHODS.providerConfigurationApplyDraft]: (request) =>
+          observeRpcEffect(
+            WS_METHODS.providerConfigurationApplyDraft,
+            providerConfiguration.applyDraft(request),
+            { "rpc.aggregate": "providerConfiguration" },
+          ),
+        [WS_METHODS.providerConfigurationRunSkillAction]: (request) =>
+          observeRpcEffect(
+            WS_METHODS.providerConfigurationRunSkillAction,
+            providerConfiguration.runSkillAction(request),
+            { "rpc.aggregate": "providerConfiguration" },
+          ),
+        [WS_METHODS.providerConfigurationInitializeSkill]: (request) =>
+          observeRpcEffect(
+            WS_METHODS.providerConfigurationInitializeSkill,
+            providerConfiguration.initializeSkill(request),
+            { "rpc.aggregate": "providerConfiguration" },
           ),
         [WS_METHODS.serverDiscoverSourceControl]: (_input) =>
           observeRpcEffect(

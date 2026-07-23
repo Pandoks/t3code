@@ -48,14 +48,17 @@ export function useNewThreadHandler() {
         envMode?: DraftThreadEnvMode;
         startFromOrigin?: boolean;
         replace?: boolean;
+        initialPrompt?: string;
       },
     ): Promise<void> => {
       const {
         getDraftSessionByLogicalProjectKey,
         getDraftSession,
         getDraftThread,
+        getComposerDraft,
         applyStickyState,
         setDraftThreadContext,
+        setPrompt,
         setLogicalProjectDraftThreadId,
       } = useComposerDraftStore.getState();
       const currentRouteTarget = getCurrentRouteTarget();
@@ -91,6 +94,12 @@ export function useNewThreadHandler() {
         : null;
       if (reusableStoredDraftThread) {
         return (async () => {
+          if (
+            options?.initialPrompt &&
+            !getComposerDraft(reusableStoredDraftThread.draftId)?.prompt
+          ) {
+            setPrompt(reusableStoredDraftThread.draftId, options.initialPrompt);
+          }
           if (
             hasBranchOption ||
             hasWorktreePathOption ||
@@ -178,6 +187,9 @@ export function useNewThreadHandler() {
           runtimeMode: DEFAULT_RUNTIME_MODE,
         });
         applyStickyState(draftId);
+        if (options?.initialPrompt) {
+          setPrompt(draftId, options.initialPrompt);
+        }
 
         await router.navigate({
           to: "/draft/$draftId",
