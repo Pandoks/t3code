@@ -108,6 +108,8 @@ import * as AzureDevOpsCli from "./sourceControl/AzureDevOpsCli.ts";
 import * as BitbucketApi from "./sourceControl/BitbucketApi.ts";
 import * as GitHubCli from "./sourceControl/GitHubCli.ts";
 import * as GitLabCli from "./sourceControl/GitLabCli.ts";
+import * as ExternalChatService from "./externalChats/ExternalChatService.ts";
+import { makeExternalChatRpcHandlers } from "./externalChats/ExternalChatRpc.ts";
 import * as SourceControlProviderRegistry from "./sourceControl/SourceControlProviderRegistry.ts";
 import * as GitVcsDriver from "./vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "./vcs/VcsDriverRegistry.ts";
@@ -287,6 +289,9 @@ const PROVIDER_STATUS_DEBOUNCE_MS = 200;
 const SHELL_RESUME_MAX_GAP = 1_000;
 
 const RPC_REQUIRED_SCOPE = new Map<string, AuthEnvironmentScope>([
+  [WS_METHODS.externalChatsList, AuthOrchestrationReadScope],
+  [WS_METHODS.externalChatsRefresh, AuthOrchestrationReadScope],
+  [WS_METHODS.externalChatsImport, AuthOrchestrationOperateScope],
   [ORCHESTRATION_WS_METHODS.dispatchCommand, AuthOrchestrationOperateScope],
   [ORCHESTRATION_WS_METHODS.getTurnDiff, AuthOrchestrationReadScope],
   [ORCHESTRATION_WS_METHODS.getFullThreadDiff, AuthOrchestrationReadScope],
@@ -435,6 +440,8 @@ const makeWsRpcLayer = (
       const serverEnvironment = yield* ServerEnvironment.ServerEnvironment;
       const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
       const sourceControlDiscovery = yield* SourceControlDiscovery.SourceControlDiscovery;
+      const externalChats = yield* ExternalChatService.ExternalChatService;
+      const externalChatHandlers = makeExternalChatRpcHandlers(externalChats);
       const automaticGitFetchInterval = serverSettings.getSettings.pipe(
         Effect.map((settings) => settings.automaticGitFetchInterval),
         Effect.catch((cause) =>
@@ -1110,6 +1117,30 @@ const makeWsRpcLayer = (
           .pipe(Effect.ignoreCause({ log: true }), Effect.forkDetach, Effect.asVoid);
 
       return WsRpcGroup.of({
+        [WS_METHODS.externalChatsList]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.externalChatsList,
+            externalChatHandlers[WS_METHODS.externalChatsList](input),
+            {
+              "rpc.aggregate": "external-chats",
+            },
+          ),
+        [WS_METHODS.externalChatsRefresh]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.externalChatsRefresh,
+            externalChatHandlers[WS_METHODS.externalChatsRefresh](input),
+            {
+              "rpc.aggregate": "external-chats",
+            },
+          ),
+        [WS_METHODS.externalChatsImport]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.externalChatsImport,
+            externalChatHandlers[WS_METHODS.externalChatsImport](input),
+            {
+              "rpc.aggregate": "external-chats",
+            },
+          ),
         [ORCHESTRATION_WS_METHODS.dispatchCommand]: (command) =>
           observeRpcEffect(
             ORCHESTRATION_WS_METHODS.dispatchCommand,

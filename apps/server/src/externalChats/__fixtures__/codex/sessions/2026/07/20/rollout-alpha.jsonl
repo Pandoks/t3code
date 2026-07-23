@@ -1,0 +1,24 @@
+{"timestamp":"2026-07-20T10:00:00.000Z","type":"session_meta","payload":{"id":"codex-session-alpha","timestamp":"2026-07-20T10:00:00.000Z","cwd":"/workspace/alpha","base_instructions":{"text":"HIDDEN_SYSTEM_PROMPT"},"dynamic_tools":[{"name":"secret","description":"CREDENTIAL_SNAPSHOT"}]}}
+{"timestamp":"2026-07-20T10:00:02.000Z","type":"turn_context","payload":{"cwd":"/workspace/alpha","developer_instructions":"HIDDEN_DEVELOPER_PROMPT","environment_context":{"API_TOKEN":"SUPER_SECRET_TOKEN"}}}
+{"timestamp":"2026-07-20T10:00:03.000Z","type":"response_item","payload":{"type":"message","role":"system","content":[{"type":"input_text","text":"HIDDEN_SYSTEM_MESSAGE"}]}}
+{"timestamp":"2026-07-20T10:00:04.000Z","type":"response_item","payload":{"type":"message","role":"developer","content":[{"type":"input_text","text":"HIDDEN_DEVELOPER_MESSAGE"}]}}
+{"timestamp":"2026-07-20T10:00:06.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Implemented the parser."}]}}
+{"timestamp":"2026-07-20T10:00:06.005Z","type":"event_msg","payload":{"type":"agent_message","message":"Implemented the parser."}}
+{"timestamp":"2026-07-20T10:00:06.500Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Fix the parser"}]}}
+{"timestamp":"2026-07-20T10:00:06.505Z","type":"event_msg","payload":{"type":"user_message","message":"Fix the parser"}}
+{"timestamp":"2026-07-20T10:00:01.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Fix the parser"}]}}
+{"timestamp":"2026-07-20T10:00:01.005Z","type":"event_msg","payload":{"type":"user_message","message":"Fix the parser"}}
+{"timestamp":"2026-07-20T10:00:02.500Z","type":"event_msg","payload":{"type":"exec_command_end","call_id":"call-1","turn_id":"turn-1","command":["pnpm","test"],"stdout":"one test failed","stderr":"","exit_code":1,"status":"failed"}}
+{"timestamp":"2026-07-20T10:00:03.500Z","type":"event_msg","payload":{"type":"patch_apply_end","call_id":"call-2","turn_id":"turn-1","stdout":"Done!","stderr":"","success":true,"status":"completed","changes":{"src/parser.ts":{"update":{"unified_diff":"@@ -1 +1 @@\n-old\n+new"}}}}}
+{"timestamp":"2026-07-20T10:00:04.500Z","type":"event_msg","payload":{"type":"plan_update","explanation":"Repair parser","plan":[{"step":"Reproduce failure","status":"completed"},{"step":"Implement fix","status":"in_progress"}]}}
+{"timestamp":"2026-07-20T10:00:04.600Z","type":"response_item","payload":{"type":"custom_tool_call","call_id":"custom-1","name":"render_diagram","status":"in_progress","input":"{\"topic\":\"catalog\"}"}}
+{"timestamp":"2026-07-20T10:00:04.700Z","type":"response_item","payload":{"type":"custom_tool_call_output","call_id":"custom-1","name":"render_diagram","output":"rendered diagram"}}
+{"timestamp":"2026-07-20T10:00:04.710Z","type":"response_item","payload":{"type":"custom_tool_call","call_id":"custom-shell","name":"exec_command","status":"in_progress","input":"{\"cmd\":\"pnpm test --filter catalog\"}"}}
+{"timestamp":"2026-07-20T10:00:04.720Z","type":"response_item","payload":{"type":"custom_tool_call_output","call_id":"custom-shell","name":"exec_command","output":"tests passed"}}
+{"timestamp":"2026-07-20T10:00:04.730Z","type":"response_item","payload":{"type":"custom_tool_call","call_id":"custom-patch","name":"apply_patch","status":"in_progress","input":"{\"path\":\"src/catalog.ts\",\"patch\":\"@@ -1 +1 @@\"}"}}
+{"timestamp":"2026-07-20T10:00:04.740Z","type":"response_item","payload":{"type":"custom_tool_call_output","call_id":"custom-patch","name":"apply_patch","output":"Done!"}}
+{"timestamp":"2026-07-20T10:00:05.000Z","type":"event_msg","payload":{"type":"error","message":"Transient tool error"}}
+{"timestamp":"2026-07-20T10:00:07.000Z","type":"event_msg","payload":{"type":"turn_aborted","turn_id":"turn-1","reason":"interrupted"}}
+{"timestamp":"2026-07-20T10:00:08.000Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-2","last_agent_message":"Implemented the parser."}}
+this is malformed json
+{"timestamp":"2026-07-20T10:00:09.000Z","type":"future_native_record","payload":{"private":"UNKNOWN_SECRET_PAYLOAD"}}

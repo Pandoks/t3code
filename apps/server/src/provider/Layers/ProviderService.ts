@@ -50,6 +50,7 @@ import type { ProviderAdapterShape } from "../Services/ProviderAdapter.ts";
 import * as ProviderAdapterRegistry from "../Services/ProviderAdapterRegistry.ts";
 import * as ProviderService from "../Services/ProviderService.ts";
 import * as ProviderSessionDirectory from "../Services/ProviderSessionDirectory.ts";
+import { validateImportedSourceAvailability } from "../importedSourceAvailability.ts";
 import { type EventNdjsonLogger } from "./EventNdjsonLogger.ts";
 import * as ProviderEventLoggers from "./ProviderEventLoggers.ts";
 import * as AnalyticsService from "../../telemetry/AnalyticsService.ts";
@@ -397,6 +398,12 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
       const persistedCwd = readPersistedCwd(input.binding.runtimePayload);
       const persistedModelSelection = readPersistedModelSelection(input.binding.runtimePayload);
 
+      yield* validateImportedSourceAvailability({
+        operation: input.operation,
+        threadId: input.binding.threadId,
+        runtimePayload: input.binding.runtimePayload,
+      });
+
       yield* prepareMcpSession(input.binding.threadId, bindingInstanceId);
       const resumed = yield* adapter
         .startSession({
@@ -560,6 +567,13 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
           );
         }
         const persistedBinding = Option.getOrUndefined(yield* directory.getBinding(threadId));
+        if (persistedBinding?.providerInstanceId === resolvedInstanceId) {
+          yield* validateImportedSourceAvailability({
+            operation: "ProviderService.startSession",
+            threadId,
+            runtimePayload: persistedBinding.runtimePayload,
+          });
+        }
         const effectiveResumeCursor =
           input.resumeCursor ??
           (persistedBinding?.providerInstanceId === resolvedInstanceId

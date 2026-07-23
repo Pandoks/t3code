@@ -35,6 +35,9 @@ import {
 } from "../../persistence/Services/ProjectionTurns.ts";
 import { ProjectionThreadRepository } from "../../persistence/Services/ProjectionThreads.ts";
 import { ProjectionPendingApprovalRepositoryLive } from "../../persistence/Layers/ProjectionPendingApprovals.ts";
+import { ExternalChatImportRepositoryLive } from "../../persistence/Layers/ExternalChatImports.ts";
+import { ExternalChatImportRepository } from "../../persistence/ExternalChatImports.ts";
+import * as ProviderSessionRuntime from "../../persistence/ProviderSessionRuntime.ts";
 import { ProjectionProjectRepositoryLive } from "../../persistence/Layers/ProjectionProjects.ts";
 import { ProjectionStateRepositoryLive } from "../../persistence/Layers/ProjectionState.ts";
 import { ProjectionThreadActivityRepositoryLive } from "../../persistence/Layers/ProjectionThreadActivities.ts";
@@ -65,6 +68,7 @@ export const ORCHESTRATION_PROJECTOR_NAMES = {
   threadTurns: "projection.thread-turns",
   checkpoints: "projection.checkpoints",
   pendingApprovals: "projection.pending-approvals",
+  externalChatImports: "projection.external-chat-imports",
 } as const;
 
 type ProjectorName =
@@ -480,6 +484,8 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
     const projectionThreadSessionRepository = yield* ProjectionThreadSessionRepository;
     const projectionTurnRepository = yield* ProjectionTurnRepository;
     const projectionPendingApprovalRepository = yield* ProjectionPendingApprovalRepository;
+    const externalChatImports = yield* ExternalChatImportRepository;
+    const providerSessionRuntime = yield* ProviderSessionRuntime.ProviderSessionRuntimeRepository;
 
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
@@ -1378,6 +1384,48 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
 
     const applyCheckpointsProjection: ProjectorDefinition["apply"] = () => Effect.void;
 
+    const applyExternalChatImportsProjection: ProjectorDefinition["apply"] = Effect.fn(
+      "applyExternalChatImportsProjection",
+    )(function* (event, _attachmentSideEffects) {
+      if (event.type !== "thread.session-set" || event.payload.externalChatImport === undefined) {
+        return;
+      }
+      const imported = event.payload.externalChatImport;
+      const providerName = imported.source === "codex" ? "codex" : "claudeAgent";
+      yield* providerSessionRuntime.upsert({
+        threadId: event.payload.threadId,
+        providerName,
+        providerInstanceId: imported.providerInstanceId,
+        adapterKey: providerName,
+        runtimeMode: imported.runtimeMode,
+        status: "stopped",
+        lastSeenAt: imported.importedAt,
+        resumeCursor: imported.resumeCursor,
+        runtimePayload: {
+          cwd: imported.cwd,
+          modelSelection: imported.modelSelection,
+          externalChat: {
+            source: imported.source,
+            sourceFile: imported.sourceFile,
+            sourceFingerprint: imported.sourceFingerprint,
+            importedAt: imported.importedAt,
+            schemaVersion: imported.schemaVersion,
+          },
+        },
+      });
+      yield* externalChatImports.upsert({
+        source: imported.source,
+        providerInstanceId: imported.providerInstanceId,
+        nativeSessionId: imported.nativeSessionId,
+        candidateId: imported.candidateId,
+        threadId: event.payload.threadId,
+        sourceFingerprint: imported.sourceFingerprint,
+        importedAt: imported.importedAt,
+        schemaVersion: imported.schemaVersion,
+        candidateSnapshot: imported.candidateSnapshot,
+      });
+    });
+
     const applyPendingApprovalsProjection: ProjectorDefinition["apply"] = Effect.fn(
       "applyPendingApprovalsProjection",
     )(function* (event, _attachmentSideEffects) {
@@ -1536,6 +1584,10 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
         apply: applyPendingApprovalsProjection,
       },
       {
+        name: ORCHESTRATION_PROJECTOR_NAMES.externalChatImports,
+        apply: applyExternalChatImportsProjection,
+      },
+      {
         name: ORCHESTRATION_PROJECTOR_NAMES.threads,
         apply: applyThreadsProjection,
       },
@@ -1642,4 +1694,6 @@ export const OrchestrationProjectionPipelineLive = Layer.effect(
   Layer.provideMerge(ProjectionTurnRepositoryLive),
   Layer.provideMerge(ProjectionPendingApprovalRepositoryLive),
   Layer.provideMerge(ProjectionStateRepositoryLive),
+  Layer.provideMerge(ExternalChatImportRepositoryLive),
+  Layer.provideMerge(ProviderSessionRuntime.layer),
 );

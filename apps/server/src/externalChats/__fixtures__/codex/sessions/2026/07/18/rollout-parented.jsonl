@@ -1,0 +1,2 @@
+{"timestamp":"2026-07-18T10:00:00.000Z","type":"session_meta","payload":{"id":"codex-session-parented","timestamp":"2026-07-18T10:00:00.000Z","cwd":"/workspace/parented","source":{"subagent":{"thread_spawn":{"parent_thread_id":"codex-parent-session"}}}}}
+{"timestamp":"2026-07-18T10:00:01.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Investigate the parent task"}]}}

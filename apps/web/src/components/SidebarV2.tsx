@@ -98,6 +98,7 @@ import {
 } from "./ui/sidebar";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
+import { ExternalChatImportSidebarAction } from "./ExternalChatImportDialog";
 
 // Settled-tail paging: recent history is the common lookup; the deep tail
 // stays behind an explicit Show more.
@@ -1365,6 +1366,9 @@ export default function SidebarV2() {
                   </Kbd>
                 ) : null}
               </CommandDialogTrigger>
+            </SidebarMenuItem>
+            <SidebarMenuItem className="shrink-0">
+              <ExternalChatImportSidebarAction tooltipSide="right" variant="sidebar-v2" />
             </SidebarMenuItem>
             <SidebarMenuItem className="shrink-0">
               <SidebarMenuButton

@@ -21,6 +21,12 @@ import {
   TurnId,
 } from "./baseSchemas.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
+import {
+  ExternalChatCandidate,
+  ExternalChatCandidateId,
+  ExternalChatNativeSessionId,
+  ExternalChatSource,
+} from "./externalChats.ts";
 
 export const ORCHESTRATION_WS_METHODS = {
   dispatchCommand: "orchestration.dispatchCommand",
@@ -788,6 +794,69 @@ const ThreadMessageAssistantCompleteCommand = Schema.Struct({
   createdAt: IsoDateTime,
 });
 
+const ThreadMessageHistoryAppendCommand = Schema.Struct({
+  type: Schema.Literal("thread.message.history.append"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  messageId: MessageId,
+  role: Schema.Literals(["user", "assistant"]),
+  text: Schema.String,
+  createdAt: IsoDateTime,
+});
+
+const ExternalChatImportMetadata = Schema.Struct({
+  source: ExternalChatSource,
+  providerInstanceId: ProviderInstanceId,
+  nativeSessionId: ExternalChatNativeSessionId,
+  candidateId: ExternalChatCandidateId,
+  sourceFingerprint: Schema.String,
+  importedAt: IsoDateTime,
+  schemaVersion: Schema.Int,
+  candidateSnapshot: Schema.NullOr(ExternalChatCandidate),
+  sourceFile: TrimmedNonEmptyString,
+  cwd: Schema.NullOr(TrimmedNonEmptyString),
+  modelSelection: ModelSelection,
+  runtimeMode: RuntimeMode,
+  resumeCursor: Schema.Unknown,
+});
+export type ExternalChatImportMetadata = typeof ExternalChatImportMetadata.Type;
+
+const ExternalChatImportHistoryRecord = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal("message"),
+    eventId: EventId,
+    messageId: MessageId,
+    role: Schema.Literals(["user", "assistant"]),
+    text: Schema.String,
+    createdAt: IsoDateTime,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("activity"),
+    eventId: EventId,
+    activity: OrchestrationThreadActivity,
+    createdAt: IsoDateTime,
+  }),
+]);
+
+const ThreadExternalChatImportCommand = Schema.Struct({
+  type: Schema.Literal("thread.external-chat.import"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  projectId: ProjectId,
+  title: TrimmedNonEmptyString,
+  modelSelection: ModelSelection,
+  runtimeMode: RuntimeMode,
+  interactionMode: ProviderInteractionMode,
+  branch: Schema.NullOr(TrimmedNonEmptyString),
+  worktreePath: Schema.NullOr(TrimmedNonEmptyString),
+  createdAt: IsoDateTime,
+  createEventId: EventId,
+  history: Schema.Array(ExternalChatImportHistoryRecord),
+  sessionEventId: EventId,
+  session: OrchestrationSession,
+  externalChat: ExternalChatImportMetadata,
+});
+
 const ThreadProposedPlanUpsertCommand = Schema.Struct({
   type: Schema.Literal("thread.proposed-plan.upsert"),
   commandId: CommandId,
@@ -827,9 +896,11 @@ const ThreadRevertCompleteCommand = Schema.Struct({
 });
 
 const InternalOrchestrationCommand = Schema.Union([
+  ThreadExternalChatImportCommand,
   ThreadSessionSetCommand,
   ThreadMessageAssistantDeltaCommand,
   ThreadMessageAssistantCompleteCommand,
+  ThreadMessageHistoryAppendCommand,
   ThreadProposedPlanUpsertCommand,
   ThreadTurnDiffCompleteCommand,
   ThreadActivityAppendCommand,
@@ -1031,6 +1102,7 @@ export const ThreadSessionStopRequestedPayload = Schema.Struct({
 export const ThreadSessionSetPayload = Schema.Struct({
   threadId: ThreadId,
   session: OrchestrationSession,
+  externalChatImport: Schema.optional(ExternalChatImportMetadata),
 });
 
 export const ThreadProposedPlanUpsertedPayload = Schema.Struct({

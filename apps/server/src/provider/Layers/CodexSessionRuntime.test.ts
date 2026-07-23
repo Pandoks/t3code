@@ -18,6 +18,7 @@ import {
   buildTurnStartParams,
   hasConfiguredMcpServer,
   isRecoverableThreadResumeError,
+  makeCodexResumeCursor,
   openCodexThread,
 } from "./CodexSessionRuntime.ts";
 const isCodexAppServerRequestError = Schema.is(CodexErrors.CodexAppServerRequestError);
@@ -365,6 +366,50 @@ describe("isRecoverableThreadResumeError", () => {
 });
 
 describe("openCodexThread", () => {
+  it("preserves strict resume in every persisted cursor", () => {
+    NodeAssert.deepStrictEqual(makeCodexResumeCursor("native-thread", true), {
+      threadId: "native-thread",
+      strictResume: true,
+    });
+    NodeAssert.deepStrictEqual(makeCodexResumeCursor("ordinary-thread", false), {
+      threadId: "ordinary-thread",
+    });
+  });
+
+  it.effect("does not fall back to thread/start for strict imported cursors", () =>
+    Effect.gen(function* () {
+      const calls: Array<"thread/start" | "thread/resume"> = [];
+      const client = {
+        request: <M extends "thread/start" | "thread/resume">(
+          method: M,
+          _payload: CodexRpc.ClientRequestParamsByMethod[M],
+        ) => {
+          calls.push(method);
+          return Effect.fail(
+            new CodexErrors.CodexAppServerRequestError({
+              code: -32603,
+              errorMessage: "thread not found",
+            }),
+          );
+        },
+      };
+
+      const error = yield* openCodexThread({
+        client,
+        threadId: ThreadId.make("thread-imported"),
+        runtimeMode: "full-access",
+        cwd: "/tmp/project",
+        requestedModel: "gpt-5.3-codex",
+        serviceTier: undefined,
+        resumeThreadId: "native-imported-thread",
+        strictResume: true,
+      }).pipe(Effect.flip);
+
+      NodeAssert.ok(isCodexAppServerRequestError(error));
+      NodeAssert.deepStrictEqual(calls, ["thread/resume"]);
+    }),
+  );
+
   it.effect("falls back to thread/start when resume fails recoverably", () =>
     Effect.gen(function* () {
       const calls: Array<{ method: "thread/start" | "thread/resume"; payload: unknown }> = [];
