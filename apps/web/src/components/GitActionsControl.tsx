@@ -84,12 +84,13 @@ import { sourceControlEnvironment } from "~/state/sourceControl";
 import { threadEnvironment } from "~/state/threads";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { vcsEnvironment } from "~/state/vcs";
+import { previewEnvironment } from "~/state/preview";
 import { randomUUID } from "~/lib/utils";
 import { resolvePathLinkTarget } from "~/terminal-links";
 import { type DraftId, useComposerDraftStore } from "~/composerDraftStore";
 import { readLocalApi } from "~/localApi";
 import { getSourceControlPresentation } from "~/sourceControlPresentation";
-import { openPullRequestLink } from "~/lib/openPullRequestLink";
+import { openPullRequestInPreview, openPullRequestLink } from "~/lib/openPullRequestLink";
 
 interface GitActionsControlProps {
   gitCwd: string | null;
@@ -976,6 +977,7 @@ export default function GitActionsControl({
     threadEnvironment.updateMetadata,
     "thread branch metadata update",
   );
+  const openPreview = useAtomCommand(previewEnvironment.open, { reportFailure: false });
   const activeEnvironmentId = activeThreadRef?.environmentId ?? null;
   const serverConfig = useAtomValue(serverEnvironment.configValueAtom(activeEnvironmentId));
   const openInPreferredEditor = useOpenInPreferredEditor(
@@ -1229,7 +1231,16 @@ export default function GitActionsControl({
       });
       return;
     }
-    void openPullRequestLink(api.shell, prUrl).catch((err: unknown) => {
+    const openPr =
+      activeThreadRef === null
+        ? openPullRequestLink(api.shell, prUrl)
+        : openPullRequestInPreview({
+            threadRef: activeThreadRef,
+            targetUrl: prUrl,
+            openPreview,
+            shell: api.shell,
+          });
+    void openPr.catch((err: unknown) => {
       console.error(err);
       toastManager.add(
         stackedThreadToast({
@@ -1240,7 +1251,7 @@ export default function GitActionsControl({
         }),
       );
     });
-  }, [gitStatusForActions, threadToastData]);
+  }, [activeThreadRef, gitStatusForActions, openPreview, threadToastData]);
 
   runGitActionWithToast = useEffectEvent(
     async ({

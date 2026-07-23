@@ -1,9 +1,11 @@
-import type { LocalApi } from "@t3tools/contracts";
+import type { LocalApi, ScopedThreadRef } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { type MouseEvent, useCallback } from "react";
 
+import { openUrlInPreview, type OpenPreviewMutation } from "../browser/openFileInPreview";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
 import { readLocalApi } from "../localApi";
+import { isPreviewSupportedInRuntime } from "../previewStateStore";
 
 export class PullRequestLinkOpenError extends Schema.TaggedErrorClass<PullRequestLinkOpenError>()(
   "PullRequestLinkOpenError",
@@ -38,6 +40,26 @@ export async function openPullRequestLink(
   } catch (cause) {
     throw PullRequestLinkOpenError.fromCause(targetUrl, cause);
   }
+}
+
+export async function openPullRequestInPreview<E>(input: {
+  readonly threadRef: ScopedThreadRef;
+  readonly targetUrl: string;
+  readonly openPreview: OpenPreviewMutation<E>;
+  readonly shell: Pick<LocalApi["shell"], "openExternal">;
+}): Promise<void> {
+  if (isPreviewSupportedInRuntime() && input.threadRef.threadId.length > 0) {
+    const result = await openUrlInPreview({
+      threadRef: input.threadRef,
+      url: input.targetUrl,
+      openPreview: input.openPreview,
+    });
+    if (result._tag === "Success") {
+      return;
+    }
+  }
+
+  await openPullRequestLink(input.shell, input.targetUrl);
 }
 
 /**
