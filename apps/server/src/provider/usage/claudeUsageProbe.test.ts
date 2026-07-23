@@ -58,6 +58,8 @@ it.effect("releases the native usage PTY and its temporary working directory", (
     }).pipe(Effect.provideService(PtyAdapter.PtyAdapter, pty), Effect.forkScoped);
 
     yield* Effect.yieldNow;
+    yield* TestClock.adjust(Duration.seconds(2));
+    yield* Effect.yieldNow;
     yield* TestClock.adjust(Duration.seconds(3));
     const snapshot = yield* Fiber.join(fiber);
 
@@ -78,7 +80,7 @@ it.effect("reissues the native usage command while the panel is still loading", 
     const process: PtyAdapter.PtyProcess = {
       pid: 1,
       write(data) {
-        if (data !== "/usage\r") return;
+        if (data !== "/usage\r" && data !== "r") return;
         usageWrites++;
         onData(usageWrites === 1 ? "Loading usage…" : SCREEN);
       },
@@ -99,7 +101,11 @@ it.effect("reissues the native usage command while the panel is still loading", 
       environment: {},
     }).pipe(Effect.provideService(PtyAdapter.PtyAdapter, pty), Effect.forkScoped);
     yield* Effect.yieldNow;
-    yield* TestClock.adjust(Duration.seconds(8));
+    yield* TestClock.adjust(Duration.seconds(2));
+    yield* Effect.yieldNow;
+    yield* TestClock.adjust(Duration.seconds(3));
+    yield* Effect.yieldNow;
+    yield* TestClock.adjust(Duration.seconds(3));
     const snapshot = yield* Fiber.join(fiber);
 
     expect(snapshot.headlineWindowId).toBe("session");
