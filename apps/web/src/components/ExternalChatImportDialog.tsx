@@ -7,6 +7,7 @@ import type {
   ProjectId,
   ThreadId,
 } from "@t3tools/contracts";
+import { ProviderDriverKind } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   isAtomCommandInterrupted,
@@ -52,6 +53,7 @@ import { Input } from "./ui/input";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "./ui/select";
 import { SidebarMenuButton } from "./ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
+import { PROVIDER_ICON_BY_PROVIDER } from "./chat/providerIconUtils";
 import {
   applyExternalChatImportResults,
   buildExternalChatImportBatches,
@@ -70,6 +72,11 @@ import {
 const SOURCE_LABELS: Record<ExternalChatSource, string> = {
   codex: "Codex",
   claude: "Claude",
+};
+
+const SOURCE_DRIVER_KINDS: Record<ExternalChatSource, ProviderDriverKind> = {
+  codex: ProviderDriverKind.make("codex"),
+  claude: ProviderDriverKind.make("claudeAgent"),
 };
 
 function errorMessage(error: unknown, fallback: string): string {
@@ -274,6 +281,8 @@ export function ExternalChatCandidateRow(props: {
 }) {
   const state = getExternalChatCandidateState(props.candidate);
   const destination = props.projects.find((project) => project.id === props.destinationProjectId);
+  const providerLabel = SOURCE_LABELS[props.candidate.source];
+  const ProviderIcon = PROVIDER_ICON_BY_PROVIDER[SOURCE_DRIVER_KINDS[props.candidate.source]];
   return (
     <div
       className={cn(
@@ -295,9 +304,15 @@ export function ExternalChatCandidateRow(props: {
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-2">
             <span className="truncate text-sm font-medium">{props.candidate.title}</span>
-            <Badge variant="outline" size="sm">
-              {SOURCE_LABELS[props.candidate.source]}
-            </Badge>
+            {ProviderIcon ? (
+              <span
+                className="inline-flex size-4 shrink-0 items-center justify-center"
+                role="img"
+                aria-label={providerLabel}
+              >
+                <ProviderIcon aria-hidden="true" className="size-3.5" />
+              </span>
+            ) : null}
             <Badge
               variant={state.resumabilityLabel === "Can resume" ? "success" : "secondary"}
               size="sm"
@@ -316,7 +331,7 @@ export function ExternalChatCandidateRow(props: {
               <MessageSquareIcon className="size-3" />
               {props.candidate.messageCount} messages
             </span>
-            <span className="font-mono">{props.candidate.providerInstanceId}</span>
+            <span>{providerLabel}</span>
           </div>
           {state.resumabilityReason ? (
             <p className="mt-1 text-[11px] text-muted-foreground">{state.resumabilityReason}</p>

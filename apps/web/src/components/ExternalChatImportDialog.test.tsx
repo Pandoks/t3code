@@ -1,4 +1,4 @@
-import type { ExternalChatCandidate } from "@t3tools/contracts";
+import { ProviderDriverKind, type ExternalChatCandidate } from "@t3tools/contracts";
 import { Children, isValidElement, type ReactElement, type ReactNode } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
 
@@ -12,6 +12,7 @@ import {
   ExternalChatImportTrigger,
   ExternalChatRefreshButton,
 } from "./ExternalChatImportDialog";
+import { PROVIDER_ICON_BY_PROVIDER } from "./chat/providerIconUtils";
 
 const candidate = (overrides: Record<string, unknown> = {}): ExternalChatCandidate =>
   ({
@@ -164,6 +165,49 @@ describe("ExternalChatImportDialog controls", () => {
 });
 
 describe("ExternalChatCandidateRow", () => {
+  it("uses accessible provider icons instead of raw provider identifiers", () => {
+    const rowProps = {
+      selected: false,
+      destinationProjectId: null,
+      projects: [],
+      error: null,
+      onSelect: vi.fn(),
+      onProjectChange: vi.fn(),
+      onOpenImported: vi.fn(),
+    };
+    const codexRow = ExternalChatCandidateRow({
+      ...rowProps,
+      candidate: candidate({
+        source: "codex",
+        providerInstanceId: "codex",
+        title: "Review logs",
+      }),
+    });
+    const claudeRow = ExternalChatCandidateRow({ ...rowProps, candidate: candidate() });
+
+    expect(
+      findElement(codexRow, (element) => element.props.role === "img")?.props["aria-label"],
+    ).toBe("Codex");
+    expect(
+      findElement(claudeRow, (element) => element.props.role === "img")?.props["aria-label"],
+    ).toBe("Claude");
+    expect(
+      findElement(
+        codexRow,
+        (element) => element.type === PROVIDER_ICON_BY_PROVIDER[ProviderDriverKind.make("codex")],
+      ),
+    ).not.toBeNull();
+    expect(
+      findElement(
+        claudeRow,
+        (element) =>
+          element.type === PROVIDER_ICON_BY_PROVIDER[ProviderDriverKind.make("claudeAgent")],
+      ),
+    ).not.toBeNull();
+    expect(textContent(codexRow)).not.toContain("codex");
+    expect(textContent(claudeRow)).not.toContain("claudeAgent");
+  });
+
   it("prevents selection mutation while another lifecycle request is active", () => {
     const onSelect = vi.fn();
     const row = ExternalChatCandidateRow({
