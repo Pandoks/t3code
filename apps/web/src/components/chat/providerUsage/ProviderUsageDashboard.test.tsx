@@ -173,6 +173,8 @@ describe("ProviderUsageDashboard", () => {
     );
 
     expect(markup).toContain("#D97757");
+    expect(markup).toContain("Session");
+    expect(markup).not.toContain("text-2xl");
   });
 
   it("uses the same flat history metrics and chart labeling for Claude and Codex", () => {

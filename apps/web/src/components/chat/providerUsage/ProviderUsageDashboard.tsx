@@ -50,12 +50,7 @@ export function ProviderUsageDashboard(props: {
     );
   }
 
-  const headline =
-    selected.windows.find((window) => window.id === selected.headlineWindowId) ??
-    selected.windows[0] ??
-    null;
   const color = providerColor(selected.driver);
-  const isCodex = selected.driver === "codex";
   const windows = orderProviderUsageWindows(selected.driver, selected.windows);
   const hasProviderTabs = props.snapshots.length > 1;
   const selectedTabId = `${tabGroupId}-tab-${selected.instanceId}`;
@@ -145,27 +140,6 @@ export function ProviderUsageDashboard(props: {
             />
           </Button>
         </header>
-
-        {!isCodex ? (
-          <section className="mt-4 flex items-end justify-between gap-4 border-b pb-4">
-            <div>
-              <div className="font-semibold text-2xl tabular-nums tracking-tight">
-                {formatProviderUsagePercent(headline?.remainingPercent)}
-                {headline ? (
-                  <span className="ml-1.5 font-medium text-muted-foreground text-xs">
-                    remaining
-                  </span>
-                ) : null}
-              </div>
-              <div className="mt-1 text-muted-foreground text-xs">
-                {headline?.label ?? "Current window"}
-              </div>
-            </div>
-            <div className="text-right text-[11px] text-muted-foreground">
-              {headline ? formatProviderUsageReset(headline.resetsAt, now) : "—"}
-            </div>
-          </section>
-        ) : null}
 
         <section className="mt-4 space-y-3" aria-label="Quota windows">
           {windows.map((window) => {
