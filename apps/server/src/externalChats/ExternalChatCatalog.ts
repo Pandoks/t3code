@@ -151,9 +151,35 @@ const makeCandidateId = (
 interface ParsedJsonl {
   readonly lines: ReadonlyArray<ParsedLine>;
   readonly diagnostics: Array<ExternalChatDiagnostic>;
+  /** Timestamps from records dropped before retention (still needed for created/updated). */
+  readonly droppedTimestamps: ReadonlyArray<string>;
 }
 
-const MAX_RETAINED_STRING_LENGTH = 65_536;
+const MAX_RETAINED_STRING_LENGTH = 8_192;
+
+// Bulky Codex record types the parser never turns into events. Dropping them at
+// stream time keeps multi-GiB transcripts from exhausting the heap; their
+// timestamps are still collected for created/updated bounds.
+const isDroppableCodexRecord = (record: JsonRecord): boolean => {
+  const type = record.type;
+  if (type === "turn_context" || type === "compacted" || type === "world_state") return true;
+  const payloadType = asRecord(record.payload)?.type;
+  if (type === "response_item") {
+    return payloadType === "reasoning" || payloadType === "function_call_output";
+  }
+  if (type === "event_msg") {
+    return (
+      payloadType === "token_count" ||
+      payloadType === "agent_reasoning" ||
+      payloadType === "agent_reasoning_delta" ||
+      payloadType === "agent_message_delta" ||
+      payloadType === "agent_reasoning_raw_content" ||
+      payloadType === "agent_reasoning_raw_content_delta" ||
+      payloadType === "agent_reasoning_section_break"
+    );
+  }
+  return false;
+};
 
 const truncateRetainedStrings = (value: unknown): unknown => {
   if (typeof value === "string") {
@@ -172,47 +198,48 @@ const truncateRetainedStrings = (value: unknown): unknown => {
   return value;
 };
 
-const parseJsonlLine = (
-  lines: Array<ParsedLine>,
-  diagnostics: Array<ExternalChatDiagnostic>,
-  rawLine: string,
-  index: number,
-) => {
-  if (rawLine.trim().length === 0) return;
-  try {
-    const record = asRecord(truncateRetainedStrings(JSON.parse(rawLine)));
-    if (!record) throw new Error("JSONL record is not an object");
-    const timestamp = asString(record.timestamp);
-    lines.push({
-      line: index + 1,
-      record,
-      ...(timestamp ? { timestamp } : {}),
-    });
-  } catch {
-    diagnostics.push({
-      kind: "malformed",
-      line: index + 1,
-      message: "Malformed JSONL record was skipped.",
-    });
-  }
-};
-
 // Streams line-by-line so multi-GiB native transcripts never hit the 2 GiB
-// readFile cap or V8's max string length.
-const readParsedJsonl = async (sourceFile: string): Promise<ParsedJsonl> => {
+// readFile cap, V8's max string length, or the heap limit.
+const readParsedJsonl = async (
+  sourceFile: string,
+  droppable?: (record: JsonRecord) => boolean,
+): Promise<ParsedJsonl> => {
   const lines: Array<ParsedLine> = [];
   const diagnostics: Array<ExternalChatDiagnostic> = [];
+  const droppedTimestamps: Array<string> = [];
   const stream = NodeFS.createReadStream(sourceFile, { encoding: "utf8" });
   try {
     const reader = NodeReadline.createInterface({ input: stream, crlfDelay: Infinity });
     let index = 0;
     for await (const rawLine of reader) {
-      parseJsonlLine(lines, diagnostics, rawLine, index++);
+      const line = index++;
+      if (rawLine.trim().length === 0) continue;
+      try {
+        const parsed = asRecord(JSON.parse(rawLine));
+        if (!parsed) throw new Error("JSONL record is not an object");
+        const timestamp = asString(parsed.timestamp);
+        if (droppable?.(parsed)) {
+          if (timestamp) droppedTimestamps.push(timestamp);
+          continue;
+        }
+        const record = asRecord(truncateRetainedStrings(parsed)) as JsonRecord;
+        lines.push({
+          line: line + 1,
+          record,
+          ...(timestamp ? { timestamp } : {}),
+        });
+      } catch {
+        diagnostics.push({
+          kind: "malformed",
+          line: line + 1,
+          message: "Malformed JSONL record was skipped.",
+        });
+      }
     }
   } finally {
     stream.close();
   }
-  return { lines, diagnostics };
+  return { lines, diagnostics, droppedTimestamps };
 };
 
 const textFromContent = (content: unknown): string | undefined => {
@@ -341,7 +368,7 @@ const parseCodexTranscript = (parsed: ParsedJsonl, sourceFile: string): ParsedTr
   const customToolCalls = new Map<string, NativeToolCall>();
   const responseMessageCounts = new Map<string, number>();
   const eventMessageCounts = new Map<string, number>();
-  const timestamps: Array<string> = [];
+  const timestamps: Array<string> = [...parsed.droppedTimestamps];
   let nativeSessionId = NodePath.basename(sourceFile, ".jsonl");
   let cwd: string | undefined;
   let title: string | undefined;
@@ -655,7 +682,7 @@ const parseClaudeTranscript = (parsed: ParsedJsonl, sourceFile: string): ParsedT
   const events: Array<TimestampedEvent> = [];
   const seenMessages = new Set<string>();
   const toolCalls = new Map<string, NativeToolCall>();
-  const timestamps: Array<string> = [];
+  const timestamps: Array<string> = [...parsed.droppedTimestamps];
   let nativeSessionId = NodePath.basename(sourceFile, ".jsonl");
   let cwd: string | undefined;
   let title: string | undefined;
@@ -965,7 +992,10 @@ const scanSource = Effect.fn("ExternalChatCatalog.scanSource")(function* (
   for (const sourceFile of files) {
     const read = yield* Effect.tryPromise({
       try: async () => ({
-        jsonl: await readParsedJsonl(sourceFile),
+        jsonl: await readParsedJsonl(
+          sourceFile,
+          source === "codex" ? isDroppableCodexRecord : undefined,
+        ),
         stat: await NodeFSP.stat(sourceFile),
       }),
       catch: (cause) => new ExternalChatScanError({ source, homeRoot: input.homeRoot, cause }),
