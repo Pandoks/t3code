@@ -371,4 +371,79 @@ describe("external native chat catalog", () => {
         expect(after).toBe(before);
       }).pipe(Effect.provide(NodeServices.layer)),
   );
+
+  it.effect("truncates oversized record strings instead of retaining them verbatim", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "t3-codex-huge-"))),
+      (homeRoot) =>
+        Effect.gen(function* () {
+          const sessionsRoot = NodePath.join(homeRoot, "sessions", "2026", "07", "20");
+          yield* Effect.promise(() => NodeFSP.mkdir(sessionsRoot, { recursive: true }));
+          const hugeOutput = "x".repeat(200_000);
+          yield* Effect.promise(() =>
+            NodeFSP.writeFile(
+              NodePath.join(sessionsRoot, "rollout-huge.jsonl"),
+              [
+                '{"timestamp":"2026-07-20T10:00:00.000Z","type":"session_meta","payload":{"id":"codex-session-huge","cwd":"/workspace/huge","source":"vscode"}}',
+                '{"timestamp":"2026-07-20T10:00:01.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Run the big command"}]}}',
+                `{"timestamp":"2026-07-20T10:00:02.000Z","type":"response_item","payload":{"type":"custom_tool_call","call_id":"call-1","name":"shell","input":"{\\"command\\":\\"cat big\\"}"}}`,
+                `{"timestamp":"2026-07-20T10:00:03.000Z","type":"response_item","payload":{"type":"custom_tool_call_output","call_id":"call-1","output":"${hugeOutput}"}}`,
+              ].join("\n"),
+            ),
+          );
+
+          const [session] = yield* scanCodexExternalChats({
+            homeRoot,
+            providerInstanceId: ProviderInstanceId.make("codex_work"),
+          });
+
+          expect(session?.candidate.nativeSessionId).toBe("codex-session-huge");
+          const commandEvents = session?.events.filter((event) => event.type === "command") ?? [];
+          const outputs = commandEvents
+            .map((event) => (event.type === "command" ? event.output : undefined))
+            .filter((output): output is string => output !== undefined);
+          expect(outputs.length).toBeGreaterThan(0);
+          for (const output of outputs) {
+            expect(output.length).toBeLessThan(70_000);
+            expect(output).toContain("[truncated");
+          }
+        }),
+      (homeRoot) => Effect.promise(() => NodeFSP.rm(homeRoot, { recursive: true, force: true })),
+    ).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("skips unreadable transcripts instead of failing the whole scan", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "t3-codex-unread-"))),
+      (homeRoot) =>
+        Effect.gen(function* () {
+          const sessionsRoot = NodePath.join(homeRoot, "sessions", "2026", "07", "20");
+          yield* Effect.promise(() => NodeFSP.mkdir(sessionsRoot, { recursive: true }));
+          yield* Effect.promise(() =>
+            NodeFSP.writeFile(
+              NodePath.join(sessionsRoot, "rollout-good.jsonl"),
+              [
+                '{"timestamp":"2026-07-20T10:00:00.000Z","type":"session_meta","payload":{"id":"codex-session-good","cwd":"/workspace/good","source":"vscode"}}',
+                '{"timestamp":"2026-07-20T10:00:01.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Still importable"}]}}',
+              ].join("\n"),
+            ),
+          );
+          const unreadable = NodePath.join(sessionsRoot, "rollout-unreadable.jsonl");
+          yield* Effect.promise(() => NodeFSP.writeFile(unreadable, "{}"));
+          yield* Effect.promise(() => NodeFSP.chmod(unreadable, 0o000));
+
+          const sessions = yield* scanCodexExternalChats({
+            homeRoot,
+            providerInstanceId: ProviderInstanceId.make("codex_work"),
+          }).pipe(
+            Effect.ensuring(Effect.promise(() => NodeFSP.chmod(unreadable, 0o600).catch(() => {}))),
+          );
+
+          expect(sessions.map((session) => session.candidate.nativeSessionId)).toEqual([
+            "codex-session-good",
+          ]);
+        }),
+      (homeRoot) => Effect.promise(() => NodeFSP.rm(homeRoot, { recursive: true, force: true })),
+    ).pipe(Effect.provide(NodeServices.layer)),
+  );
 });

@@ -1,6 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeCrypto from "node:crypto";
-import * as NodeFSP from "node:fs/promises";
+import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 import {
@@ -294,7 +294,10 @@ const make = Effect.gen(function* () {
         (cause) =>
           new ExternalChatRpcError({
             operation: "externalChats.list",
-            message: cause instanceof Error ? cause.message : "Failed to list external chats.",
+            message:
+              cause instanceof Error && cause.message
+                ? cause.message
+                : "Failed to list external chats.",
           }),
       ),
     );
@@ -311,7 +314,10 @@ const make = Effect.gen(function* () {
         (cause) =>
           new ExternalChatRpcError({
             operation: "externalChats.refresh",
-            message: cause instanceof Error ? cause.message : "Failed to refresh external chats.",
+            message:
+              cause instanceof Error && cause.message
+                ? cause.message
+                : "Failed to refresh external chats.",
           }),
       ),
     );
@@ -390,17 +396,20 @@ const make = Effect.gen(function* () {
     );
     const runImport = Effect.gen(function* () {
       const fingerprint = yield* Effect.tryPromise({
-        try: () => NodeFSP.readFile(native.sourceFile),
+        // Streamed so multi-GiB native transcripts don't hit the readFile size cap.
+        try: async () => {
+          const hash = NodeCrypto.createHash("sha256");
+          for await (const chunk of NodeFS.createReadStream(native.sourceFile)) {
+            hash.update(chunk as Buffer);
+          }
+          return `sha256:${hash.digest("hex")}`;
+        },
         catch: () =>
           new ExternalChatRpcError({
             operation: "externalChats.import.readSource",
             message: "Native source is no longer available.",
           }),
-      }).pipe(
-        Effect.map(
-          (contents) => `sha256:${NodeCrypto.createHash("sha256").update(contents).digest("hex")}`,
-        ),
-      );
+      });
       const importedAt = DateTime.formatIso(yield* DateTime.now);
       const resumeCursor =
         candidate.source === "codex"
@@ -514,7 +523,10 @@ const make = Effect.gen(function* () {
         (cause) =>
           new ExternalChatRpcError({
             operation: "externalChats.import",
-            message: cause instanceof Error ? cause.message : "Failed to import external chats.",
+            message:
+              cause instanceof Error && cause.message
+                ? cause.message
+                : "Failed to import external chats.",
           }),
       ),
     );

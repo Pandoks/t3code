@@ -1,7 +1,9 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeCrypto from "node:crypto";
+import * as NodeFS from "node:fs";
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
+import * as NodeReadline from "node:readline";
 
 import {
   ExternalChatCandidateId,
@@ -146,32 +148,69 @@ const makeCandidateId = (
       .digest("hex")}`,
   );
 
-const parseJsonl = (
-  contents: string,
-): {
+interface ParsedJsonl {
   readonly lines: ReadonlyArray<ParsedLine>;
   readonly diagnostics: Array<ExternalChatDiagnostic>;
-} => {
+}
+
+const MAX_RETAINED_STRING_LENGTH = 65_536;
+
+const truncateRetainedStrings = (value: unknown): unknown => {
+  if (typeof value === "string") {
+    return value.length <= MAX_RETAINED_STRING_LENGTH
+      ? value
+      : `${value.slice(0, MAX_RETAINED_STRING_LENGTH)}… [truncated ${value.length - MAX_RETAINED_STRING_LENGTH} characters]`;
+  }
+  if (Array.isArray(value)) return value.map(truncateRetainedStrings);
+  if (typeof value === "object" && value !== null) {
+    const result: JsonRecord = {};
+    for (const [key, entry] of Object.entries(value)) {
+      result[key] = truncateRetainedStrings(entry);
+    }
+    return result;
+  }
+  return value;
+};
+
+const parseJsonlLine = (
+  lines: Array<ParsedLine>,
+  diagnostics: Array<ExternalChatDiagnostic>,
+  rawLine: string,
+  index: number,
+) => {
+  if (rawLine.trim().length === 0) return;
+  try {
+    const record = asRecord(truncateRetainedStrings(JSON.parse(rawLine)));
+    if (!record) throw new Error("JSONL record is not an object");
+    const timestamp = asString(record.timestamp);
+    lines.push({
+      line: index + 1,
+      record,
+      ...(timestamp ? { timestamp } : {}),
+    });
+  } catch {
+    diagnostics.push({
+      kind: "malformed",
+      line: index + 1,
+      message: "Malformed JSONL record was skipped.",
+    });
+  }
+};
+
+// Streams line-by-line so multi-GiB native transcripts never hit the 2 GiB
+// readFile cap or V8's max string length.
+const readParsedJsonl = async (sourceFile: string): Promise<ParsedJsonl> => {
   const lines: Array<ParsedLine> = [];
   const diagnostics: Array<ExternalChatDiagnostic> = [];
-  for (const [index, rawLine] of contents.split(/\r?\n/u).entries()) {
-    if (rawLine.trim().length === 0) continue;
-    try {
-      const record = asRecord(JSON.parse(rawLine));
-      if (!record) throw new Error("JSONL record is not an object");
-      const timestamp = asString(record.timestamp);
-      lines.push({
-        line: index + 1,
-        record,
-        ...(timestamp ? { timestamp } : {}),
-      });
-    } catch {
-      diagnostics.push({
-        kind: "malformed",
-        line: index + 1,
-        message: "Malformed JSONL record was skipped.",
-      });
+  const stream = NodeFS.createReadStream(sourceFile, { encoding: "utf8" });
+  try {
+    const reader = NodeReadline.createInterface({ input: stream, crlfDelay: Infinity });
+    let index = 0;
+    for await (const rawLine of reader) {
+      parseJsonlLine(lines, diagnostics, rawLine, index++);
     }
+  } finally {
+    stream.close();
   }
   return { lines, diagnostics };
 };
@@ -295,8 +334,7 @@ const classifyCodexCustomTool = (name: string, input: string): NativeToolCall =>
 
 const messageIdentity = (role: "user" | "assistant", text: string) => `${role}\0${text}`;
 
-const parseCodexTranscript = (contents: string, sourceFile: string): ParsedTranscript => {
-  const parsed = parseJsonl(contents);
+const parseCodexTranscript = (parsed: ParsedJsonl, sourceFile: string): ParsedTranscript => {
   const diagnostics = [...parsed.diagnostics];
   const events: Array<TimestampedEvent> = [];
   const seenMessages = new Set<string>();
@@ -612,8 +650,7 @@ const claudePlanText = (input: JsonRecord): string => {
   return asString(input.plan) ?? "Plan updated";
 };
 
-const parseClaudeTranscript = (contents: string, sourceFile: string): ParsedTranscript => {
-  const parsed = parseJsonl(contents);
+const parseClaudeTranscript = (parsed: ParsedJsonl, sourceFile: string): ParsedTranscript => {
   const diagnostics = [...parsed.diagnostics];
   const events: Array<TimestampedEvent> = [];
   const seenMessages = new Set<string>();
@@ -926,17 +963,26 @@ const scanSource = Effect.fn("ExternalChatCatalog.scanSource")(function* (
   const files = yield* discoverJsonlFiles(source, input.homeRoot);
   const sessions: Array<NativeExternalChat> = [];
   for (const sourceFile of files) {
-    const { contents, stat } = yield* Effect.tryPromise({
+    const read = yield* Effect.tryPromise({
       try: async () => ({
-        contents: await NodeFSP.readFile(sourceFile, "utf8"),
+        jsonl: await readParsedJsonl(sourceFile),
         stat: await NodeFSP.stat(sourceFile),
       }),
       catch: (cause) => new ExternalChatScanError({ source, homeRoot: input.homeRoot, cause }),
-    });
+    }).pipe(
+      // One unreadable transcript must not take down the whole scan.
+      Effect.catchTag("ExternalChatScanError", (error) =>
+        Effect.logWarning("external-chat transcript skipped", { sourceFile, error }).pipe(
+          Effect.as(undefined),
+        ),
+      ),
+    );
+    if (read === undefined) continue;
+    const { jsonl, stat } = read;
     const parsed =
       source === "codex"
-        ? parseCodexTranscript(contents, sourceFile)
-        : parseClaudeTranscript(contents, sourceFile);
+        ? parseCodexTranscript(jsonl, sourceFile)
+        : parseClaudeTranscript(jsonl, sourceFile);
     if (
       (source === "claude" && (parsed.isSidechain || parsed.isTeammateAgent)) ||
       (source === "codex" && (parsed.isSubagent || parsed.parentThreadId))
